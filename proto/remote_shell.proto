@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package modernrat;
+
+option go_package = "github.com/modernrat/proto";
+
+// Remote shell message types. The direction of the message is noted per type.
+enum ShellMessageType {
+  SHELL_MESSAGE_TYPE_UNSPECIFIED = 0;
+  // Client -> Server: announce availability for remote shell.
+  SHELL_MESSAGE_TYPE_REGISTER = 1;
+  // Server -> Client: acknowledge registration.
+  SHELL_MESSAGE_TYPE_REGISTERED = 2;
+  // Admin -> Server and Server -> Client: request that a shell session be opened.
+  SHELL_MESSAGE_TYPE_OPEN = 3;
+  // Client -> Server and Server -> Admin: shell session is ready.
+  SHELL_MESSAGE_TYPE_ACCEPTED = 4;
+  // Admin -> Server -> Client: data written to the shell stdin.
+  SHELL_MESSAGE_TYPE_STDIN = 5;
+  // Client -> Server -> Admin: data read from the shell stdout.
+  SHELL_MESSAGE_TYPE_STDOUT = 6;
+  // Client -> Server -> Admin: data read from the shell stderr.
+  SHELL_MESSAGE_TYPE_STDERR = 7;
+  // Either direction: close the shell session.
+  SHELL_MESSAGE_TYPE_CLOSE = 8;
+  // Either direction: notify an error condition.
+  SHELL_MESSAGE_TYPE_ERROR = 9;
+  // Admin -> Server -> Client: resize the pseudo terminal window.
+  SHELL_MESSAGE_TYPE_RESIZE = 10;
+  // Client -> Server: heartbeat to keep the session alive.
+  SHELL_MESSAGE_TYPE_HEARTBEAT = 11;
+}
+
+// ShellMessage carries data for a remote shell session.
+message ShellMessage {
+  // Session identifier assigned by the server.
+  string session_id = 1;
+  // User identifier associated with the session or registration.
+  string user_id = 2;
+  ShellMessageType type = 3;
+  // Binary payload for stdin/stdout/stderr data.
+  bytes data = 4;
+  // Human readable message for status or errors.
+  string text = 5;
+  // Optional exit code when a session terminates.
+  int32 exit_code = 6;
+
+  // Optional terminal dimensions (columns x rows). Used with OPEN/RESIZE.
+  int32 cols = 7;
+  int32 rows = 8;
+  // Unix timestamp provided for events like HEARTBEAT.
+  int64 ts = 9;
+}
+
+// RemoteShellService bridges the admin console with the remote user agent.
+service RemoteShellService {
+  // AdminShell streams commands from the admin to the user and returns output.
+  rpc AdminShell(stream ShellMessage) returns (stream ShellMessage);
+  // ClientShell streams availability and shell data from the user agent.
+  rpc ClientShell(stream ShellMessage) returns (stream ShellMessage);
+}

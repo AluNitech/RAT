@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package modernrat;
+
+option go_package = "github.com/modernrat/proto";
+
+// Messages for file transfer between admin console and user agent.
+enum FileTransferMessageType {
+  FILE_TRANSFER_MESSAGE_TYPE_UNSPECIFIED = 0;
+  // Client -> Server: announce availability for file transfers.
+  FILE_TRANSFER_MESSAGE_TYPE_REGISTER = 1;
+  // Server -> Client: acknowledge registration.
+  FILE_TRANSFER_MESSAGE_TYPE_REGISTERED = 2;
+  // Admin -> Server -> Client: request to upload a file to the client machine.
+  FILE_TRANSFER_MESSAGE_TYPE_UPLOAD_REQUEST = 3;
+  // Admin -> Server -> Client: request to download a file from the client machine.
+  FILE_TRANSFER_MESSAGE_TYPE_DOWNLOAD_REQUEST = 4;
+  // Client -> Server -> Admin: accept a transfer request.
+  FILE_TRANSFER_MESSAGE_TYPE_ACCEPTED = 5;
+  // Client -> Server -> Admin: reject a transfer request before it starts.
+  FILE_TRANSFER_MESSAGE_TYPE_REJECTED = 6;
+  // Either direction: chunked file data content.
+  FILE_TRANSFER_MESSAGE_TYPE_DATA = 7;
+  // Either direction: sent when the transfer completed successfully.
+  FILE_TRANSFER_MESSAGE_TYPE_COMPLETE = 8;
+  // Either direction: cancellation or error.
+  FILE_TRANSFER_MESSAGE_TYPE_ERROR = 9;
+  // Either direction: cancel an in-flight transfer.
+  FILE_TRANSFER_MESSAGE_TYPE_CANCEL = 10;
+}
+
+// FileTransferMessage carries metadata and content for a file transfer session.
+message FileTransferMessage {
+  // Transfer identifier assigned by the server.
+  string transfer_id = 1;
+  // User identifier associated with the message.
+  string user_id = 2;
+  // Type of the payload represented by this message.
+  FileTransferMessageType type = 3;
+  // Path on the client machine involved in the transfer.
+  string remote_path = 4;
+  // Size of the entire file in bytes when known.
+  int64 file_size = 5;
+  // Sequential offset of this chunk within the file.
+  int64 offset = 6;
+  // Binary chunk payload for FILE_TRANSFER_MESSAGE_TYPE_DATA.
+  bytes data = 7;
+  // Human-readable status text or error details.
+  string text = 8;
+}
+
+service FileTransferService {
+  // Stream that connects the admin console with user agents for file operations.
+  rpc AdminFileTransfer(stream FileTransferMessage) returns (stream FileTransferMessage);
+  // Stream that connects user agents to receive file transfer requests.
+  rpc ClientFileTransfer(stream FileTransferMessage) returns (stream FileTransferMessage);
+}

