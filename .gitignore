@@ -1,0 +1,29 @@
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Generated databases and secrets
+*.db
+*.sqlite
+modernrat_users.db
+*.log
+*.pem
+*.key
+
+# Coverage and test outputs
+cover*.out
+*.test
+
+# IDE and editor files
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# macOS and Windows metadata
+.DS_Store
+Thumbs.db
