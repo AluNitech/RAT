@@ -98,6 +98,8 @@ func main() {
 		log.Fatal("管理トークンを取得できませんでした")
 	}
 
+	disableTerminalFocusReporting()
+
 	app := &adminApp{
 		ctx:          rootCtx,
 		adminClient:  adminClient,

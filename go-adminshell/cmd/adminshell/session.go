@@ -198,17 +198,21 @@ func (s *adminSession) stdinLoop(sessionID string) error {
 	reader := s.inputFile()
 	buf := make([]byte, 4096)
 	var remoteBuf []byte
+	// Track "visible" typed chars to detect ':' at logical line start
 	lineBuf := make([]byte, 0, 128)
 	lineHasNonSpace := false
 
+	// Escape sequence capture for correct pass-through and selective filtering
+	type escType int
 	const (
-		escStateNone = iota
-		escStateStart
-		escStateCSI
-		escStateOSC
-		escStateOSCExit
+		escNone escType = iota
+		escCSI
+		escOSC
+		escSS3
 	)
-	escapeState := escStateNone
+	inEscape := false
+	curEscType := escNone
+	escSeq := make([]byte, 0, 64) // buffer for a single escape sequence
 
 	flushRemote := func() error {
 		if len(remoteBuf) == 0 {
@@ -238,46 +242,99 @@ func (s *adminSession) stdinLoop(sessionID string) error {
 		if n > 0 {
 			for i := 0; i < n; i++ {
 				b := buf[i]
+				// Escape sequence capture state machine (pass-through, with filtering)
+				if !inEscape {
+					if b == 0x1b { // ESC
+						inEscape = true
+						curEscType = escNone
+						escSeq = escSeq[:0]
+						escSeq = append(escSeq, b)
+						continue
+					}
+				} else {
+					// already in escape: accumulate and detect termination
+					escSeq = append(escSeq, b)
+					if len(escSeq) == 2 && b == '[' {
+						curEscType = escCSI
+						continue
+					}
+					if len(escSeq) == 2 && b == ']' {
+						curEscType = escOSC
+						continue
+					}
+					if len(escSeq) == 2 && b == 'O' {
+						curEscType = escSS3
+						// SS3 typically ends on this char or after one more; forward as-is
+						// Treat next byte (if any) as part of the sequence then finish
+						// We'll terminate on next iteration if printable
+					}
 
-				switch escapeState {
-				case escStateNone:
-					if b == 0x1b {
-						escapeState = escStateStart
+					switch curEscType {
+					case escCSI:
+						// CSI ends when final byte in 0x40..0x7E appears
+						if b >= 0x40 && b <= 0x7e {
+							// Selectively DROP focus in/out reports: ESC [ ... I / ESC [ ... O
+							drop := false
+							if len(escSeq) >= 3 && escSeq[0] == 0x1b && escSeq[1] == '[' {
+								final := escSeq[len(escSeq)-1]
+								if final == 'I' || final == 'O' {
+									drop = true
+									for _, c := range escSeq[2 : len(escSeq)-1] {
+										if (c >= '0' && c <= '9') || c == ';' || c == '?' {
+											continue
+										}
+										drop = false
+										break
+									}
+								}
+							}
+							if !drop {
+								remoteBuf = append(remoteBuf, escSeq...)
+							}
+							inEscape = false
+							curEscType = escNone
+							escSeq = escSeq[:0]
+						}
 						continue
-					}
-				case escStateStart:
-					switch b {
-					case '[':
-						escapeState = escStateCSI
-					case ']':
-						escapeState = escStateOSC
+					case escOSC:
+						// OSC ends on BEL or ESC \
+						if b == 0x07 { // BEL
+							remoteBuf = append(remoteBuf, escSeq...)
+							inEscape = false
+							curEscType = escNone
+							escSeq = escSeq[:0]
+						} else if b == 0x1b {
+							// may be ESC \
+							// leave accumulation; check next byte on next iteration
+						} else if len(escSeq) >= 2 && escSeq[len(escSeq)-2] == 0x1b && b == '\\' {
+							remoteBuf = append(remoteBuf, escSeq...)
+							inEscape = false
+							curEscType = escNone
+							escSeq = escSeq[:0]
+						}
+						continue
+					case escSS3:
+						// SS3 sequences are short; when third byte arrives, forward and end
+						if len(escSeq) >= 3 {
+							remoteBuf = append(remoteBuf, escSeq...)
+							inEscape = false
+							curEscType = escNone
+							escSeq = escSeq[:0]
+						}
+						continue
 					default:
-						escapeState = escStateNone
-					}
-					continue
-				case escStateCSI:
-					if b >= 0x40 && b <= 0x7e {
-						escapeState = escStateNone
-					}
-					continue
-				case escStateOSC:
-					if b == 0x07 {
-						escapeState = escStateNone
+						// Unknown escape: if grows too large, flush defensively
+						if len(escSeq) > cap(escSeq)-4 {
+							remoteBuf = append(remoteBuf, escSeq...)
+							inEscape = false
+							curEscType = escNone
+							escSeq = escSeq[:0]
+						}
 						continue
 					}
-					if b == 0x1b {
-						escapeState = escStateOSCExit
-					}
-					continue
-				case escStateOSCExit:
-					if b == '\\' {
-						escapeState = escStateNone
-					} else {
-						escapeState = escStateOSC
-					}
-					continue
 				}
 
+				// At logical line start, ':' enters local mode (ignore escapes and control chars)
 				if !lineHasNonSpace && len(lineBuf) == 0 && b == ':' {
 					if err := flushRemote(); err != nil {
 						return err
@@ -295,7 +352,9 @@ func (s *adminSession) stdinLoop(sessionID string) error {
 					continue
 				}
 
+				// Forward raw byte
 				remoteBuf = append(remoteBuf, b)
+				// Maintain simple "visible" line buffer
 				if b == '\n' || b == '\r' {
 					lineBuf = lineBuf[:0]
 					lineHasNonSpace = false
@@ -604,6 +663,13 @@ func (s *adminSession) enableRawMode() error {
 	}
 	s.termState = state
 	s.rawMode = true
+
+	// Explicitly disable xterm focus reporting to avoid stray CSI I/O sequences
+	if s.ttyIn != nil {
+		_, _ = s.ttyIn.Write([]byte(disableFocusSeq))
+	} else {
+		fmt.Fprint(os.Stdout, disableFocusSeq)
+	}
 	return nil
 }
 
