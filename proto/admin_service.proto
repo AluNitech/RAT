@@ -16,6 +16,9 @@ service AdminService {
 
   // 被害者リストを取得する
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+
+  // 被害者情報を削除する
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
 }
 
 // 管理者トークン発行リクエスト
@@ -74,4 +77,16 @@ message ListUsersResponse {
   int32 page = 4;                     // 現在のページ
   int32 page_size = 5;                // ページサイズ
   string message = 6;                 // メッセージ
+}
+
+// 被害者削除リクエスト
+message DeleteUserRequest {
+  string user_id = 1;                 // 削除対象の被害者ID
+}
+
+// 被害者削除レスポンス
+message DeleteUserResponse {
+  bool success = 1;                   // 削除成功フラグ
+  string message = 2;                 // メッセージ
+  string user_id = 3;                 // 削除した被害者ID
 }

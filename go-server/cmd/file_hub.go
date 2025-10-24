@@ -229,6 +229,28 @@ func (h *fileHub) endSessionsForClient(clientConn *fileClientConnection) []*file
 	return ended
 }
 
+func (h *fileHub) disconnectUser(userID string) (*fileClientConnection, []*fileTransferSession) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	conn, ok := h.clients[userID]
+	if !ok {
+		return nil, nil
+	}
+
+	delete(h.clients, userID)
+
+	var sessions []*fileTransferSession
+	for id, session := range h.sessions {
+		if session.userID == userID {
+			delete(h.sessions, id)
+			sessions = append(sessions, session)
+		}
+	}
+
+	return conn, sessions
+}
+
 func (h *fileHub) endAllSessions() []*fileTransferSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()

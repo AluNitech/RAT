@@ -55,10 +55,61 @@ func ensureSchema(ctx context.Context, db *sql.DB) error {
 			system_info BLOB NOT NULL,
 			registered_at INTEGER NOT NULL,
 			last_seen INTEGER NOT NULL,
-			is_online INTEGER NOT NULL
+			is_online INTEGER NOT NULL,
+			client_secret_hash TEXT NOT NULL DEFAULT ''
 		)
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureColumnExists(ctx, db, "users", "client_secret_hash", "TEXT", "''")
+}
+
+func ensureColumnExists(ctx context.Context, db *sql.DB, table, column, columnType, defaultValue string) error {
+	query := "PRAGMA table_info(" + table + ")"
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	exists := false
+	for rows.Next() {
+		var (
+			cid      int
+			name     string
+			typeName string
+			notNull  int
+			defaultV sql.NullString
+			pk       int
+		)
+		if scanErr := rows.Scan(&cid, &name, &typeName, &notNull, &defaultV, &pk); scanErr != nil {
+			return scanErr
+		}
+		if strings.EqualFold(name, column) {
+			exists = true
+			break
+		}
+	}
+
+	if exists {
+		return nil
+	}
+
+	alter := "ALTER TABLE " + table + " ADD COLUMN " + column + " " + columnType
+	if defaultValue != "" {
+		alter += " DEFAULT " + defaultValue
+	}
+	if _, err := db.ExecContext(ctx, alter); err != nil {
+		return err
+	}
+	if defaultValue != "" {
+		update := "UPDATE " + table + " SET " + column + " = " + defaultValue + " WHERE " + column + " IS NULL OR " + column + " = ''"
+		if _, err := db.ExecContext(ctx, update); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func main() {

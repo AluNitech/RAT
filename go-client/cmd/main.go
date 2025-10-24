@@ -19,9 +19,12 @@ import (
 
 	gpty "github.com/aymanbagabas/go-pty"
 	pb "modernrat-client/gen"
+	"modernrat-client/internal/identity"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -48,9 +51,43 @@ func main() {
 	fileClient := pb.NewFileTransferServiceClient(conn)
 
 	systemInfo := buildSystemInfo()
-	userID, err := registerAndGetUserID(ctx, userClient, systemInfo)
+
+	savedID, savedSecret, identityErr := identity.Load()
+	if identityErr != nil {
+		switch {
+		case errors.Is(identityErr, identity.ErrBackendUnavailable):
+			log.Printf("Keyring が利用できないため資格情報をローカルファイルから読み込みます: %v", identityErr)
+		case !errors.Is(identityErr, identity.ErrNotFound):
+			log.Printf("Keyring からクライアントIDを読み取れませんでした: %v", identityErr)
+		}
+	}
+
+	userID, issuedSecret, err := registerAndGetUserID(ctx, userClient, systemInfo, savedID, savedSecret)
+	if err != nil && status.Code(err) == codes.Unauthenticated {
+		log.Printf("保存済みクライアントシークレットが無効のため再登録します: %v", err)
+		if clearErr := identity.Clear(); clearErr != nil {
+			if errors.Is(clearErr, identity.ErrBackendUnavailable) {
+				log.Printf("保存済みクライアント情報の削除で警告が発生しました: %v", clearErr)
+			} else {
+				log.Printf("Keyring のクライアント情報削除に失敗しました: %v", clearErr)
+			}
+		}
+		userID, issuedSecret, err = registerAndGetUserID(ctx, userClient, systemInfo, "", "")
+	}
 	if err != nil {
 		log.Fatalf("ユーザー登録に失敗しました: %v", err)
+	}
+
+	if issuedSecret != "" {
+		if err := identity.Save(userID, issuedSecret); err != nil {
+			if errors.Is(err, identity.ErrBackendUnavailable) {
+				log.Printf("Keyring が利用できないためクライアント情報をローカルファイルに保存しました: %v", err)
+			} else {
+				log.Printf("Keyring へのクライアント情報保存に失敗しました: %v", err)
+			}
+		}
+	} else if savedID == "" || savedSecret == "" {
+		log.Printf("警告: サーバーからクライアントシークレットが返却されませんでした (ユーザーID=%s)", userID)
 	}
 
 	log.Printf("ユーザー登録完了: UserID=%s", userID)
@@ -80,11 +117,15 @@ func main() {
 	log.Printf("リモートエージェントを終了します")
 }
 
-func registerAndGetUserID(ctx context.Context, client pb.UserRegistrationServiceClient, systemInfo *pb.SystemInfo) (string, error) {
+func registerAndGetUserID(ctx context.Context, client pb.UserRegistrationServiceClient, systemInfo *pb.SystemInfo, clientID, clientSecret string) (string, string, error) {
 	req := &pb.RegisterUserRequest{
 		SystemInfo: systemInfo,
 		UserAgent:  "ModernRat Client v2",
 		Timestamp:  time.Now().Unix(),
+	}
+	if clientID != "" && clientSecret != "" {
+		req.ClientId = clientID
+		req.ClientSecret = clientSecret
 	}
 
 	regCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -92,12 +133,12 @@ func registerAndGetUserID(ctx context.Context, client pb.UserRegistrationService
 
 	resp, err := client.RegisterUser(regCtx, req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if !resp.GetSuccess() {
-		return "", fmt.Errorf("ユーザー登録失敗: %s", resp.GetMessage())
+		return "", "", fmt.Errorf("ユーザー登録失敗: %s", resp.GetMessage())
 	}
-	return resp.GetUserId(), nil
+	return resp.GetUserId(), resp.GetClientSecret(), nil
 }
 
 func runRemoteShellClient(ctx context.Context, client pb.RemoteShellServiceClient, userID string) error {
