@@ -43,9 +43,19 @@ func (a *adminApp) listUsers() error {
 			page = 1
 		}
 
-		renderUserTable(resp.GetUsers(), page, a.listPageSize, totalCount, a.listFilter)
+		users := resp.GetUsers()
+		renderUserTable(users, page, a.listPageSize, totalCount, a.listFilter)
 
-		prompt := "次の操作 [n]ext/[p]rev/[g]oto/[f]ilter/[s]ize/[q]uit: "
+		respPageSize := int(resp.GetPageSize())
+		if respPageSize <= 0 {
+			respPageSize = a.listPageSize
+		}
+		if respPageSize <= 0 {
+			respPageSize = defaultListPageSize
+		}
+		startIndex := (page-1)*respPageSize + 1
+
+		prompt := "次の操作 [n]ext/[p]rev/[g]oto/[f]ilter/[s]ize/[d]elete/[q]uit: "
 		if totalCount == 0 {
 			prompt = "次の操作 [f]ilter/[s]ize/[q]uit: "
 		}
@@ -156,11 +166,54 @@ func (a *adminApp) listUsers() error {
 				page = targetPage
 			}
 
+		case lower == "d" || lower == "delete":
+			if totalCount == 0 {
+				fmt.Println(uiColors.wrap(uiColors.warn, "削除できるユーザーがありません。"))
+				continue
+			}
+			value, err := readLine("削除するユーザー番号またはID: ")
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return err
+			}
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			userID := ""
+			if isAllDigits(value) {
+				idx, convErr := strconv.Atoi(value)
+				if convErr != nil {
+					fmt.Println(uiColors.wrap(uiColors.warn, "無効な番号です。"))
+					continue
+				}
+				relative := idx - startIndex
+				switch {
+				case relative >= 0 && relative < len(users):
+					userID = users[relative].GetUserId()
+				case idx >= 1 && idx <= len(users):
+					userID = users[idx-1].GetUserId()
+				default:
+					fmt.Println(uiColors.wrap(uiColors.warn, "一覧に存在しない番号です。"))
+					continue
+				}
+			} else {
+				userID = value
+			}
+			if err := a.deleteUser(userID, true); err != nil {
+				fmt.Printf("%s %v\n", uiColors.wrap(uiColors.error, "削除に失敗しました:"), err)
+				continue
+			}
+			page = 1
+			continue
+
 		case lower == "q" || lower == "quit" || lower == "exit":
 			return nil
 
 		default:
-			fmt.Println(uiColors.wrap(uiColors.warn, "未対応の入力です。n/p/g/f/s/q を入力してください。"))
+			fmt.Println(uiColors.wrap(uiColors.warn, "未対応の入力です。n/p/g/f/s/d/q を入力してください。"))
 		}
 	}
 }

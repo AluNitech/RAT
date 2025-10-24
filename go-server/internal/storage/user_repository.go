@@ -30,6 +30,7 @@ type UserRepository interface {
 	Create(ctx context.Context, user UserRecord) error
 	GetByID(ctx context.Context, userID string) (UserRecord, error)
 	UpdateRegistration(ctx context.Context, user UserRecord, updateSecret bool) error
+	Delete(ctx context.Context, userID string) error
 }
 
 // SQLiteUserRepository is a concrete UserRepository backed by SQLite.
@@ -99,6 +100,20 @@ func (r *SQLiteUserRepository) UpdateRegistration(ctx context.Context, user User
 		args = []any{user.SystemInfo, user.LastSeen, boolToInt(user.IsOnline), user.ClientSecretHash, user.UserID}
 	}
 	res, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *SQLiteUserRepository) Delete(ctx context.Context, userID string) error {
+	if strings.TrimSpace(userID) == "" {
+		return errors.New("user id is required")
+	}
+	res, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE user_id = ?`, strings.TrimSpace(userID))
 	if err != nil {
 		return err
 	}

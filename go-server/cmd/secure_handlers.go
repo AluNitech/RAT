@@ -12,6 +12,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	pb "modernrat-server/gen"
+	storage "modernrat-server/internal/storage"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -381,5 +382,71 @@ func (s *server) ListUsers(ctx context.Context, req *pb.ListUsersRequest) (*pb.L
 		Page:       int32(page),
 		PageSize:   int32(pageSize),
 		Message:    "ユーザーリストを取得しました",
+	}, nil
+}
+
+func (s *server) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
+	if err := s.authenticate(ctx); err != nil {
+		return nil, err
+	}
+
+	userID := strings.TrimSpace(req.GetUserId())
+	if userID == "" {
+		return &pb.DeleteUserResponse{
+			Success: false,
+			Message: "ユーザーIDを指定してください",
+		}, status.Error(codes.InvalidArgument, "user_id is required")
+	}
+
+	reason := "user deleted by admin"
+
+	shellConn, shellSessions := s.shellHub.disconnectUser(userID)
+	for _, session := range shellSessions {
+		s.broadcastSessionClose(session, reason)
+	}
+	if shellConn != nil {
+		shellConn.Close()
+	}
+
+	fileConn, fileSessions := s.fileHub.disconnectUser(userID)
+	for _, session := range fileSessions {
+		cancelMsg := &pb.FileTransferMessage{
+			TransferId: session.id,
+			UserId:     session.userID,
+			Type:       pb.FileTransferMessageType_FILE_TRANSFER_MESSAGE_TYPE_CANCEL,
+			Text:       reason,
+		}
+		if session.adminConn != nil {
+			_ = session.adminConn.Send(cancelMsg)
+		}
+		if session.clientConn != nil {
+			_ = session.clientConn.Send(cancelMsg)
+		}
+	}
+	if fileConn != nil {
+		fileConn.Close()
+	}
+
+	if err := s.users.Delete(ctx, userID); err != nil {
+		if errors.Is(err, storage.ErrUserNotFound) {
+			return &pb.DeleteUserResponse{
+				Success: false,
+				Message: "ユーザーが見つかりません",
+				UserId:  userID,
+			}, status.Error(codes.NotFound, "user not found")
+		}
+		log.Printf("ユーザー削除に失敗しました: user=%s err=%v", userID, err)
+		return &pb.DeleteUserResponse{
+			Success: false,
+			Message: "ユーザー削除に失敗しました",
+			UserId:  userID,
+		}, status.Error(codes.Internal, "failed to delete user")
+	}
+
+	log.Printf("ユーザー削除完了: user=%s", userID)
+	return &pb.DeleteUserResponse{
+		Success: true,
+		Message: "ユーザーを削除しました",
+		UserId:  userID,
 	}, nil
 }

