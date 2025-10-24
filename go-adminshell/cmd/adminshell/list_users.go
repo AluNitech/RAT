@@ -68,20 +68,20 @@ func (a *adminApp) listUsers() error {
 		switch {
 		case lower == "n" || lower == "next":
 			if totalCount == 0 || page >= totalPages {
-				fmt.Println("最終ページです。")
+				fmt.Println(uiColors.wrap(uiColors.warn, "最終ページです。"))
 			} else {
 				page++
 			}
 
 		case lower == "p" || lower == "prev":
 			if page <= 1 {
-				fmt.Println("最初のページです。")
+				fmt.Println(uiColors.wrap(uiColors.warn, "最初のページです。"))
 			} else {
 				page--
 			}
 
 		case lower == "f" || lower == "filter":
-			fmt.Println("フィルタ例: online / offline / status:online / user:example")
+			fmt.Println(uiColors.wrap(uiColors.accent, "フィルタ例: online / offline / status:online / user:example"))
 			value, err := readLine("フィルタ文字列 (空で解除): ")
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -106,7 +106,7 @@ func (a *adminApp) listUsers() error {
 			}
 			size, convErr := strconv.Atoi(value)
 			if convErr != nil || size <= 0 {
-				fmt.Println("正の整数を入力してください。")
+				fmt.Println(uiColors.wrap(uiColors.warn, "正の整数を入力してください。"))
 				continue
 			}
 			if size > 500 {
@@ -129,7 +129,7 @@ func (a *adminApp) listUsers() error {
 			}
 			targetPage, convErr := strconv.Atoi(target)
 			if convErr != nil || targetPage <= 0 {
-				fmt.Println("正の整数を入力してください。")
+				fmt.Println(uiColors.wrap(uiColors.warn, "正の整数を入力してください。"))
 				continue
 			}
 			if totalCount == 0 {
@@ -144,7 +144,7 @@ func (a *adminApp) listUsers() error {
 		case isAllDigits(lower):
 			targetPage, convErr := strconv.Atoi(lower)
 			if convErr != nil || targetPage <= 0 {
-				fmt.Println("正の整数を入力してください。")
+				fmt.Println(uiColors.wrap(uiColors.warn, "正の整数を入力してください。"))
 				continue
 			}
 			if totalCount == 0 {
@@ -160,7 +160,7 @@ func (a *adminApp) listUsers() error {
 			return nil
 
 		default:
-			fmt.Println("未対応の入力です。n/p/g/f/s/q を入力してください。")
+			fmt.Println(uiColors.wrap(uiColors.warn, "未対応の入力です。n/p/g/f/s/q を入力してください。"))
 		}
 	}
 }
@@ -205,11 +205,11 @@ func renderUserTable(users []*pb.UserSummary, page, pageSize int, totalCount int
 	startIndex := (page-1)*pageSize + 1
 
 	if totalCount == 0 {
-		fmt.Println("ユーザーは見つかりませんでした。")
+		fmt.Println(uiColors.wrap(uiColors.warn, "ユーザーは見つかりませんでした。"))
 		fmt.Println()
 		fmt.Printf("ページ %d/%d  表示 0 件 (ページサイズ %d)", page, totalPages, pageSize)
 		if filter != "" {
-			fmt.Printf("  フィルタ: %s", filter)
+			fmt.Printf("  フィルタ: %s", uiColors.wrap(uiColors.accent, filter))
 		}
 		fmt.Println()
 		return
@@ -244,20 +244,22 @@ func renderUserTable(users []*pb.UserSummary, page, pageSize int, totalCount int
 	}
 
 	printTableSeparator(widths)
-	printTableRow(headers, widths)
+	printTableRow(headers, widths, tableHeaderStyler())
 	printTableSeparator(widths)
-	for _, row := range rows {
-		printTableRow(row, widths)
+	for idx, row := range rows {
+		printTableRow(row, widths, tableDataStyler(users[idx].GetIsOnline()))
 	}
 	printTableSeparator(widths)
 
 	endIndex := startIndex + len(users) - 1
 	fmt.Printf("ページ %d/%d  表示 %d-%d / %d件 (ページサイズ %d)", page, totalPages, startIndex, endIndex, totalCount, pageSize)
 	if filter != "" {
-		fmt.Printf("  フィルタ: %s", filter)
+		fmt.Printf("  フィルタ: %s", uiColors.wrap(uiColors.accent, filter))
 	}
 	fmt.Println()
 }
+
+type rowStyler func(col int, value string) (prefix, suffix string)
 
 func printTableSeparator(widths []int) {
 	var b strings.Builder
@@ -269,7 +271,7 @@ func printTableSeparator(widths []int) {
 	fmt.Println(b.String())
 }
 
-func printTableRow(row []string, widths []int) {
+func printTableRow(row []string, widths []int, styler rowStyler) {
 	var b strings.Builder
 	b.WriteByte('|')
 	for i, cell := range row {
@@ -277,10 +279,45 @@ func printTableRow(row []string, widths []int) {
 		if pad < 0 {
 			pad = 0
 		}
-		fmt.Fprintf(&b, " %-*s ", pad, cell)
+		prefix, suffix := "", ""
+		if styler != nil {
+			prefix, suffix = styler(i, cell)
+		}
+		fmt.Fprintf(&b, " %s%-*s%s ", prefix, pad, cell, suffix)
 		b.WriteByte('|')
 	}
 	fmt.Println(b.String())
+}
+
+func tableHeaderStyler() rowStyler {
+	prefix, suffix := uiColors.surround(uiColors.header)
+	if prefix == "" {
+		return nil
+	}
+	return func(col int, value string) (string, string) {
+		return prefix, suffix
+	}
+}
+
+func tableDataStyler(isOnline bool) rowStyler {
+	statusPrefix, statusSuffix := uiColors.surround(uiColors.statusOffline)
+	if isOnline {
+		statusPrefix, statusSuffix = uiColors.surround(uiColors.statusOnline)
+	}
+	idPrefix, idSuffix := uiColors.surround(uiColors.accent)
+	if statusPrefix == "" && statusSuffix == "" && idPrefix == "" && idSuffix == "" {
+		return nil
+	}
+	return func(col int, value string) (string, string) {
+		switch col {
+		case 1:
+			return statusPrefix, statusSuffix
+		case 2:
+			return idPrefix, idSuffix
+		default:
+			return "", ""
+		}
+	}
 }
 
 func calcTotalPages(totalCount, pageSize int) int {

