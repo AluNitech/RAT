@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package modernrat;
+
+option go_package = "github.com/modernrat/proto";
+
+// Message types for screen capture control and data flow.
+enum ScreenCaptureMessageType {
+  SCREEN_CAPTURE_MESSAGE_TYPE_UNSPECIFIED = 0;
+  // Client -> Server: announce availability for screen capture.
+  SCREEN_CAPTURE_MESSAGE_TYPE_REGISTER = 1;
+  // Server -> Client: acknowledge registration.
+  SCREEN_CAPTURE_MESSAGE_TYPE_REGISTERED = 2;
+  // Admin -> Server -> Client: request to start a capture session.
+  SCREEN_CAPTURE_MESSAGE_TYPE_START = 3;
+  // Admin -> Server -> Client: request to stop an active capture session.
+  SCREEN_CAPTURE_MESSAGE_TYPE_STOP = 4;
+  // Client -> Server -> Admin: indicate capture pipeline is ready.
+  SCREEN_CAPTURE_MESSAGE_TYPE_READY = 5;
+  // Client -> Server -> Admin: deliver encoded video data.
+  SCREEN_CAPTURE_MESSAGE_TYPE_DATA = 6;
+  // Either direction: report a terminal condition for the session.
+  SCREEN_CAPTURE_MESSAGE_TYPE_COMPLETE = 7;
+  // Either direction: report an error condition.
+  SCREEN_CAPTURE_MESSAGE_TYPE_ERROR = 8;
+  // Either direction: heartbeat to keep the stream alive.
+  SCREEN_CAPTURE_MESSAGE_TYPE_HEARTBEAT = 9;
+}
+
+// Desired encoder configuration for a capture session.
+message CaptureSettings {
+  // MIME type of the encoded payload (e.g. "video/mp2t").
+  string format = 1;
+  // Encoder name (e.g. "libx264", "h264_nvenc").
+  string encoder = 2;
+  // Desired capture width; 0 preserves native width.
+  int32 width = 3;
+  // Desired capture height; 0 preserves native height.
+  int32 height = 4;
+  // Target frame rate; 0 uses encoder default.
+  int32 framerate = 5;
+  // Target bitrate in kbps; 0 lets the encoder decide.
+  int32 bitrate_kbps = 6;
+  // Keyframe interval in frames; 0 uses encoder default.
+  int32 keyframe_interval = 7;
+  // Optional capture source override (e.g. X11 display, monitor id).
+  string capture_source = 8;
+}
+
+// Message exchanged between admin, server, and client for screen capture.
+message ScreenCaptureMessage {
+  // Session identifier assigned by the server.
+  string session_id = 1;
+  // User identifier associated with the capture request.
+  string user_id = 2;
+  ScreenCaptureMessageType type = 3;
+  // Encoded video payload for DATA messages.
+  bytes data = 4;
+  // Optional human readable text (status, errors, metadata).
+  string text = 5;
+  // Unix timestamp for the event.
+  int64 timestamp = 6;
+  // Capture settings requested or negotiated for the session.
+  CaptureSettings settings = 7;
+  // Client-assigned correlation identifier for request/response.
+  string request_id = 8;
+}
+
+// ScreenCaptureService coordinates screen recording sessions.
+service ScreenCaptureService {
+  // AdminCapture connects the admin console to the capture relay hub.
+  rpc AdminCapture(stream ScreenCaptureMessage) returns (stream ScreenCaptureMessage);
+  // ClientCapture connects the user agent to provide video data.
+  rpc ClientCapture(stream ScreenCaptureMessage) returns (stream ScreenCaptureMessage);
+}
