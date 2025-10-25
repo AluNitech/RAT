@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	github.com/chzyer/readline v1.5.1
+	github.com/google/uuid v1.6.0
 	golang.org/x/term v0.25.0
 	google.golang.org/grpc v1.67.1
 	modernrat-client v0.0.0

@@ -1,0 +1,7 @@
+# Ignore FFmpeg runtime bundles and archives
+third_party/ffmpeg/**/*.exe
+third_party/ffmpeg/**/ffmpeg
+third_party/ffmpeg/**/ffplay
+third_party/ffmpeg/**/ffprobe
+third_party/ffmpeg/**/*.zip
+third_party/ffmpeg/**/*.tar.xz

@@ -49,6 +49,7 @@ func main() {
 	userClient := pb.NewUserRegistrationServiceClient(conn)
 	shellClient := pb.NewRemoteShellServiceClient(conn)
 	fileClient := pb.NewFileTransferServiceClient(conn)
+	captureClient := pb.NewScreenCaptureServiceClient(conn)
 
 	systemInfo := buildSystemInfo()
 
@@ -107,6 +108,15 @@ func main() {
 		defer wg.Done()
 		if err := runFileTransferClient(ctx, fileClient, userID); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
 			log.Printf("ファイル転送クライアントでエラー発生: %v", err)
+			stop()
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := runScreenCaptureClient(ctx, captureClient, userID); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
+			log.Printf("スクリーンキャプチャクライアントでエラー発生: %v", err)
 			stop()
 		}
 	}()

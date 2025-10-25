@@ -427,6 +427,35 @@ func (s *server) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb
 		fileConn.Close()
 	}
 
+	captureConn, captureSessions := s.captureHub.disconnectUser(userID)
+	for _, session := range captureSessions {
+		stopMsg := &pb.ScreenCaptureMessage{
+			Type:      pb.ScreenCaptureMessageType_SCREEN_CAPTURE_MESSAGE_TYPE_STOP,
+			SessionId: session.id,
+			UserId:    session.userID,
+			Text:      reason,
+			Timestamp: time.Now().Unix(),
+		}
+		if session.clientConn != nil {
+			if err := session.clientConn.Send(stopMsg); err != nil {
+				log.Printf("スクリーンキャプチャ停止通知の送信に失敗: user=%s session=%s err=%v", session.userID, session.id, err)
+			}
+		}
+		notify := &pb.ScreenCaptureMessage{
+			Type:      pb.ScreenCaptureMessageType_SCREEN_CAPTURE_MESSAGE_TYPE_ERROR,
+			SessionId: session.id,
+			UserId:    session.userID,
+			Text:      reason,
+			Timestamp: time.Now().Unix(),
+		}
+		if session.adminConn != nil {
+			_ = session.adminConn.Send(notify)
+		}
+	}
+	if captureConn != nil {
+		captureConn.Close()
+	}
+
 	if err := s.users.Delete(ctx, userID); err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			return &pb.DeleteUserResponse{
