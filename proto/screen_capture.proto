@@ -27,6 +27,13 @@ enum ScreenCaptureMessageType {
   SCREEN_CAPTURE_MESSAGE_TYPE_HEARTBEAT = 9;
 }
 
+// Type of media source requested for capture.
+enum CaptureInputType {
+  CAPTURE_INPUT_TYPE_UNSPECIFIED = 0;
+  CAPTURE_INPUT_TYPE_SCREEN = 1;
+  CAPTURE_INPUT_TYPE_WEBCAM = 2;
+}
+
 // Desired encoder configuration for a capture session.
 message CaptureSettings {
   // MIME type of the encoded payload (e.g. "video/mp2t").
@@ -43,8 +50,10 @@ message CaptureSettings {
   int32 bitrate_kbps = 6;
   // Keyframe interval in frames; 0 uses encoder default.
   int32 keyframe_interval = 7;
-  // Optional capture source override (e.g. X11 display, monitor id).
+  // Optional capture source override (e.g. X11 display, monitor id, webcam device).
   string capture_source = 8;
+  // Requested input type.
+  CaptureInputType input_type = 9;
 }
 
 // Message exchanged between admin, server, and client for screen capture.

