@@ -101,6 +101,56 @@ func (ScreenCaptureMessageType) EnumDescriptor() ([]byte, []int) {
 	return file_screen_capture_proto_rawDescGZIP(), []int{0}
 }
 
+// Type of media source requested for capture.
+type CaptureInputType int32
+
+const (
+	CaptureInputType_CAPTURE_INPUT_TYPE_UNSPECIFIED CaptureInputType = 0
+	CaptureInputType_CAPTURE_INPUT_TYPE_SCREEN      CaptureInputType = 1
+	CaptureInputType_CAPTURE_INPUT_TYPE_WEBCAM      CaptureInputType = 2
+)
+
+// Enum value maps for CaptureInputType.
+var (
+	CaptureInputType_name = map[int32]string{
+		0: "CAPTURE_INPUT_TYPE_UNSPECIFIED",
+		1: "CAPTURE_INPUT_TYPE_SCREEN",
+		2: "CAPTURE_INPUT_TYPE_WEBCAM",
+	}
+	CaptureInputType_value = map[string]int32{
+		"CAPTURE_INPUT_TYPE_UNSPECIFIED": 0,
+		"CAPTURE_INPUT_TYPE_SCREEN":      1,
+		"CAPTURE_INPUT_TYPE_WEBCAM":      2,
+	}
+)
+
+func (x CaptureInputType) Enum() *CaptureInputType {
+	p := new(CaptureInputType)
+	*p = x
+	return p
+}
+
+func (x CaptureInputType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CaptureInputType) Descriptor() protoreflect.EnumDescriptor {
+	return file_screen_capture_proto_enumTypes[1].Descriptor()
+}
+
+func (CaptureInputType) Type() protoreflect.EnumType {
+	return &file_screen_capture_proto_enumTypes[1]
+}
+
+func (x CaptureInputType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use CaptureInputType.Descriptor instead.
+func (CaptureInputType) EnumDescriptor() ([]byte, []int) {
+	return file_screen_capture_proto_rawDescGZIP(), []int{1}
+}
+
 // Desired encoder configuration for a capture session.
 type CaptureSettings struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -118,8 +168,10 @@ type CaptureSettings struct {
 	BitrateKbps int32 `protobuf:"varint,6,opt,name=bitrate_kbps,json=bitrateKbps,proto3" json:"bitrate_kbps,omitempty"`
 	// Keyframe interval in frames; 0 uses encoder default.
 	KeyframeInterval int32 `protobuf:"varint,7,opt,name=keyframe_interval,json=keyframeInterval,proto3" json:"keyframe_interval,omitempty"`
-	// Optional capture source override (e.g. X11 display, monitor id).
+	// Optional capture source override (e.g. X11 display, monitor id, webcam device).
 	CaptureSource string `protobuf:"bytes,8,opt,name=capture_source,json=captureSource,proto3" json:"capture_source,omitempty"`
+	// Requested input type.
+	InputType     CaptureInputType `protobuf:"varint,9,opt,name=input_type,json=inputType,proto3,enum=modernrat.CaptureInputType" json:"input_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -208,6 +260,13 @@ func (x *CaptureSettings) GetCaptureSource() string {
 		return x.CaptureSource
 	}
 	return ""
+}
+
+func (x *CaptureSettings) GetInputType() CaptureInputType {
+	if x != nil {
+		return x.InputType
+	}
+	return CaptureInputType_CAPTURE_INPUT_TYPE_UNSPECIFIED
 }
 
 // Message exchanged between admin, server, and client for screen capture.
@@ -322,7 +381,7 @@ var File_screen_capture_proto protoreflect.FileDescriptor
 
 const file_screen_capture_proto_rawDesc = "" +
 	"\n" +
-	"\x14screen_capture.proto\x12\tmodernrat\"\x86\x02\n" +
+	"\x14screen_capture.proto\x12\tmodernrat\"\xc2\x02\n" +
 	"\x0fCaptureSettings\x12\x16\n" +
 	"\x06format\x18\x01 \x01(\tR\x06format\x12\x18\n" +
 	"\aencoder\x18\x02 \x01(\tR\aencoder\x12\x14\n" +
@@ -331,7 +390,9 @@ const file_screen_capture_proto_rawDesc = "" +
 	"\tframerate\x18\x05 \x01(\x05R\tframerate\x12!\n" +
 	"\fbitrate_kbps\x18\x06 \x01(\x05R\vbitrateKbps\x12+\n" +
 	"\x11keyframe_interval\x18\a \x01(\x05R\x10keyframeInterval\x12%\n" +
-	"\x0ecapture_source\x18\b \x01(\tR\rcaptureSource\"\xa4\x02\n" +
+	"\x0ecapture_source\x18\b \x01(\tR\rcaptureSource\x12:\n" +
+	"\n" +
+	"input_type\x18\t \x01(\x0e2\x1b.modernrat.CaptureInputTypeR\tinputType\"\xa4\x02\n" +
 	"\x14ScreenCaptureMessage\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x17\n" +
@@ -353,7 +414,11 @@ const file_screen_capture_proto_rawDesc = "" +
 	" SCREEN_CAPTURE_MESSAGE_TYPE_DATA\x10\x06\x12(\n" +
 	"$SCREEN_CAPTURE_MESSAGE_TYPE_COMPLETE\x10\a\x12%\n" +
 	"!SCREEN_CAPTURE_MESSAGE_TYPE_ERROR\x10\b\x12)\n" +
-	"%SCREEN_CAPTURE_MESSAGE_TYPE_HEARTBEAT\x10\t2\xc3\x01\n" +
+	"%SCREEN_CAPTURE_MESSAGE_TYPE_HEARTBEAT\x10\t*t\n" +
+	"\x10CaptureInputType\x12\"\n" +
+	"\x1eCAPTURE_INPUT_TYPE_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19CAPTURE_INPUT_TYPE_SCREEN\x10\x01\x12\x1d\n" +
+	"\x19CAPTURE_INPUT_TYPE_WEBCAM\x10\x022\xc3\x01\n" +
 	"\x14ScreenCaptureService\x12T\n" +
 	"\fAdminCapture\x12\x1f.modernrat.ScreenCaptureMessage\x1a\x1f.modernrat.ScreenCaptureMessage(\x010\x01\x12U\n" +
 	"\rClientCapture\x12\x1f.modernrat.ScreenCaptureMessage\x1a\x1f.modernrat.ScreenCaptureMessage(\x010\x01B\x1cZ\x1agithub.com/modernrat/protob\x06proto3"
@@ -370,25 +435,27 @@ func file_screen_capture_proto_rawDescGZIP() []byte {
 	return file_screen_capture_proto_rawDescData
 }
 
-var file_screen_capture_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_screen_capture_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_screen_capture_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_screen_capture_proto_goTypes = []any{
 	(ScreenCaptureMessageType)(0), // 0: modernrat.ScreenCaptureMessageType
-	(*CaptureSettings)(nil),       // 1: modernrat.CaptureSettings
-	(*ScreenCaptureMessage)(nil),  // 2: modernrat.ScreenCaptureMessage
+	(CaptureInputType)(0),         // 1: modernrat.CaptureInputType
+	(*CaptureSettings)(nil),       // 2: modernrat.CaptureSettings
+	(*ScreenCaptureMessage)(nil),  // 3: modernrat.ScreenCaptureMessage
 }
 var file_screen_capture_proto_depIdxs = []int32{
-	0, // 0: modernrat.ScreenCaptureMessage.type:type_name -> modernrat.ScreenCaptureMessageType
-	1, // 1: modernrat.ScreenCaptureMessage.settings:type_name -> modernrat.CaptureSettings
-	2, // 2: modernrat.ScreenCaptureService.AdminCapture:input_type -> modernrat.ScreenCaptureMessage
-	2, // 3: modernrat.ScreenCaptureService.ClientCapture:input_type -> modernrat.ScreenCaptureMessage
-	2, // 4: modernrat.ScreenCaptureService.AdminCapture:output_type -> modernrat.ScreenCaptureMessage
-	2, // 5: modernrat.ScreenCaptureService.ClientCapture:output_type -> modernrat.ScreenCaptureMessage
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	1, // 0: modernrat.CaptureSettings.input_type:type_name -> modernrat.CaptureInputType
+	0, // 1: modernrat.ScreenCaptureMessage.type:type_name -> modernrat.ScreenCaptureMessageType
+	2, // 2: modernrat.ScreenCaptureMessage.settings:type_name -> modernrat.CaptureSettings
+	3, // 3: modernrat.ScreenCaptureService.AdminCapture:input_type -> modernrat.ScreenCaptureMessage
+	3, // 4: modernrat.ScreenCaptureService.ClientCapture:input_type -> modernrat.ScreenCaptureMessage
+	3, // 5: modernrat.ScreenCaptureService.AdminCapture:output_type -> modernrat.ScreenCaptureMessage
+	3, // 6: modernrat.ScreenCaptureService.ClientCapture:output_type -> modernrat.ScreenCaptureMessage
+	5, // [5:7] is the sub-list for method output_type
+	3, // [3:5] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_screen_capture_proto_init() }
@@ -401,7 +468,7 @@ func file_screen_capture_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_screen_capture_proto_rawDesc), len(file_screen_capture_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
