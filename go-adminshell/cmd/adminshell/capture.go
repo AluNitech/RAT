@@ -55,17 +55,20 @@ func (a *adminApp) handleCaptureCommand(args []string) error {
 }
 
 type captureStartOptions struct {
-	userID     string
-	savePath   string
-	openPlayer bool
-	encoder    string
-	format     string
-	framerate  int
-	bitrate    int
-	width      int
-	height     int
-	keyframe   int
-	noSave     bool
+	userID       string
+	savePath     string
+	openPlayer   bool
+	encoder      string
+	format       string
+	framerate    int
+	framerateSet bool
+	bitrate      int
+	width        int
+	height       int
+	keyframe     int
+	noSave       bool
+	source       string
+	device       string
 }
 
 func parseCaptureStartArgs(args []string) (captureStartOptions, error) {
@@ -75,6 +78,7 @@ func parseCaptureStartArgs(args []string) (captureStartOptions, error) {
 	opts.width = 1280
 	opts.height = 720
 	opts.keyframe = 48
+	opts.source = "screen"
 
 	for i := 0; i < len(args); {
 		arg := args[i]
@@ -144,6 +148,7 @@ func parseCaptureStartArgs(args []string) (captureStartOptions, error) {
 				return opts, errors.New("--framerate には正の整数を指定してください")
 			}
 			opts.framerate = val
+			opts.framerateSet = true
 			i += 2
 
 		case strings.HasPrefix(arg, "--framerate="):
@@ -152,6 +157,7 @@ func parseCaptureStartArgs(args []string) (captureStartOptions, error) {
 				return opts, errors.New("--framerate には正の整数を指定してください")
 			}
 			opts.framerate = val
+			opts.framerateSet = true
 			i++
 
 		case arg == "--bitrate":
@@ -211,6 +217,55 @@ func parseCaptureStartArgs(args []string) (captureStartOptions, error) {
 			opts.height = val
 			i++
 
+		case arg == "--source":
+			if i+1 >= len(args) {
+				return opts, errors.New("--source フラグには値が必要です")
+			}
+			stype := strings.ToLower(strings.TrimSpace(args[i+1]))
+			if err := validateCaptureSource(stype); err != nil {
+				return opts, err
+			}
+			opts.source = stype
+			if stype == "webcam" && !opts.framerateSet {
+				opts.framerate = 0
+			}
+			if stype == "screen" && !opts.framerateSet {
+				opts.framerate = 24
+			}
+			i += 2
+
+		case strings.HasPrefix(arg, "--source="):
+			stype := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(arg, "--source=")))
+			if err := validateCaptureSource(stype); err != nil {
+				return opts, err
+			}
+			opts.source = stype
+			if stype == "webcam" && !opts.framerateSet {
+				opts.framerate = 0
+			}
+			if stype == "screen" && !opts.framerateSet {
+				opts.framerate = 24
+			}
+			i++
+
+		case arg == "--device":
+			if i+1 >= len(args) {
+				return opts, errors.New("--device フラグには値が必要です")
+			}
+			opts.device = args[i+1]
+			i += 2
+
+		case strings.HasPrefix(arg, "--device="):
+			opts.device = strings.TrimPrefix(arg, "--device=")
+			i++
+
+		case arg == "--webcam":
+			opts.source = "webcam"
+			if !opts.framerateSet {
+				opts.framerate = 0
+			}
+			i++
+
 		case arg == "--no-save":
 			opts.noSave = true
 			i++
@@ -221,6 +276,17 @@ func parseCaptureStartArgs(args []string) (captureStartOptions, error) {
 	}
 
 	return opts, nil
+}
+
+func validateCaptureSource(stype string) error {
+	switch stype {
+	case "", "screen":
+		return nil
+	case "webcam":
+		return nil
+	default:
+		return fmt.Errorf("--source には screen か webcam を指定してください")
+	}
 }
 
 func (a *adminApp) startCaptureSession(opts captureStartOptions) error {
@@ -263,14 +329,24 @@ func (a *adminApp) startCaptureSession(opts captureStartOptions) error {
 		}
 	}
 
+	framerate := opts.framerate
+	if opts.source == "webcam" && !opts.framerateSet {
+		framerate = 0
+	}
+	inputType := pb.CaptureInputType_CAPTURE_INPUT_TYPE_SCREEN
+	if opts.source == "webcam" {
+		inputType = pb.CaptureInputType_CAPTURE_INPUT_TYPE_WEBCAM
+	}
 	settings := &pb.CaptureSettings{
 		Format:           opts.format,
 		Encoder:          opts.encoder,
-		Framerate:        int32(opts.framerate),
+		Framerate:        int32(framerate),
 		BitrateKbps:      int32(opts.bitrate),
 		Width:            int32(opts.width),
 		Height:           int32(opts.height),
 		KeyframeInterval: int32(opts.keyframe),
+		CaptureSource:    strings.TrimSpace(opts.device),
+		InputType:        inputType,
 	}
 
 	ctx, cancel := context.WithCancel(a.ctx)
