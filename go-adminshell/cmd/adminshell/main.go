@@ -47,6 +47,7 @@ func main() {
 	adminClient := pb.NewAdminServiceClient(conn)
 	shellClient := pb.NewRemoteShellServiceClient(conn)
 	fileClient := pb.NewFileTransferServiceClient(conn)
+	captureClient := pb.NewScreenCaptureServiceClient(conn)
 
 	adminToken := strings.TrimSpace(*token)
 	if adminToken == "" && strings.TrimSpace(*tokenFile) != "" {
@@ -101,15 +102,16 @@ func main() {
 	disableTerminalFocusReporting()
 
 	app := &adminApp{
-		ctx:          rootCtx,
-		adminClient:  adminClient,
-		shellClient:  shellClient,
-		fileClient:   fileClient,
-		token:        adminToken,
-		defaultUser:  strings.TrimSpace(*defaultUser),
-		attachedUser: "",
-		listFilter:   "",
-		listPageSize: defaultListPageSize,
+		ctx:           rootCtx,
+		adminClient:   adminClient,
+		shellClient:   shellClient,
+		fileClient:    fileClient,
+		captureClient: captureClient,
+		token:         adminToken,
+		defaultUser:   strings.TrimSpace(*defaultUser),
+		attachedUser:  "",
+		listFilter:    "",
+		listPageSize:  defaultListPageSize,
 	}
 	if app.defaultUser != "" {
 		app.attachedUser = app.defaultUser
