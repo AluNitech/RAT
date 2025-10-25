@@ -38,6 +38,7 @@ type server struct {
 	pb.UnimplementedAdminServiceServer
 	pb.UnimplementedRemoteShellServiceServer
 	pb.UnimplementedFileTransferServiceServer
+	pb.UnimplementedScreenCaptureServiceServer
 	// db はユーザーデータを永続化する SQLite データベース
 	db            *sql.DB
 	jwtSecret     []byte
@@ -45,6 +46,7 @@ type server struct {
 	shellHub      *shellHub
 	users         storage.UserRepository
 	fileHub       *fileHub
+	captureHub    *captureHub
 }
 
 // ensureSchema は必要なテーブルを作成してスキーマを保証する
@@ -192,6 +194,7 @@ func run(ctx context.Context, cfg serverConfig) error {
 	pb.RegisterAdminServiceServer(grpcServer, svc)
 	pb.RegisterRemoteShellServiceServer(grpcServer, svc)
 	pb.RegisterFileTransferServiceServer(grpcServer, svc)
+	pb.RegisterScreenCaptureServiceServer(grpcServer, svc)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -206,6 +209,7 @@ func run(ctx context.Context, cfg serverConfig) error {
 		log.Println("シャットダウン要求を受信しました")
 		svc.shutdownShellSessions("server shutting down")
 		svc.shutdownFileTransfers("server shutting down")
+		svc.shutdownCaptureSessions("server shutting down")
 		shutdown(grpcServer)
 		if serveErr := <-errCh; serveErr != nil && !errors.Is(serveErr, grpc.ErrServerStopped) {
 			return serveErr
@@ -244,6 +248,7 @@ func newServerInstance(db *sql.DB, cfg serverConfig) *server {
 		shellHub:      newShellHub(),
 		users:         storage.NewSQLiteUserRepository(db),
 		fileHub:       newFileHub(),
+		captureHub:    newCaptureHub(),
 	}
 }
 
@@ -291,6 +296,43 @@ func (s *server) shutdownFileTransfers(reason string) {
 		}
 		if session.adminConn != nil {
 			_ = session.adminConn.Send(msg)
+			session.adminConn.Close()
+		}
+	}
+}
+
+func (s *server) shutdownCaptureSessions(reason string) {
+	sessions := s.captureHub.endAllSessions()
+	if len(sessions) == 0 {
+		return
+	}
+
+	log.Printf("停止前に %d 件のスクリーンキャプチャセッションを終了します: reason=%s", len(sessions), reason)
+
+	for _, session := range sessions {
+		stopMsg := &pb.ScreenCaptureMessage{
+			Type:      pb.ScreenCaptureMessageType_SCREEN_CAPTURE_MESSAGE_TYPE_STOP,
+			SessionId: session.id,
+			UserId:    session.userID,
+			Text:      reason,
+			Timestamp: time.Now().Unix(),
+		}
+		if session.clientConn != nil {
+			if err := session.clientConn.Send(stopMsg); err != nil {
+				log.Printf("スクリーンキャプチャ停止通知の送信に失敗: user=%s session=%s err=%v", session.userID, session.id, err)
+			}
+			session.clientConn.Close()
+		}
+
+		notify := &pb.ScreenCaptureMessage{
+			Type:      pb.ScreenCaptureMessageType_SCREEN_CAPTURE_MESSAGE_TYPE_ERROR,
+			SessionId: session.id,
+			UserId:    session.userID,
+			Text:      reason,
+			Timestamp: time.Now().Unix(),
+		}
+		if session.adminConn != nil {
+			_ = session.adminConn.Send(notify)
 			session.adminConn.Close()
 		}
 	}

