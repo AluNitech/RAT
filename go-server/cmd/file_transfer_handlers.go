@@ -80,7 +80,7 @@ func (s *server) handleAdminTransferMessage(ctx context.Context, adminConn *file
 			return status.Error(codes.Unavailable, "client disconnected")
 		}
 
-		if msg.GetType() == pb.FileTransferMessageType_FILE_TRANSFER_MESSAGE_TYPE_CANCEL || msg.GetType() == pb.FileTransferMessageType_FILE_TRANSFER_MESSAGE_TYPE_COMPLETE || msg.GetType() == pb.FileTransferMessageType_FILE_TRANSFER_MESSAGE_TYPE_ERROR {
+		if msg.GetType() == pb.FileTransferMessageType_FILE_TRANSFER_MESSAGE_TYPE_CANCEL || msg.GetType() == pb.FileTransferMessageType_FILE_TRANSFER_MESSAGE_TYPE_ERROR {
 			s.fileHub.endSession(session.id)
 		}
 		return nil

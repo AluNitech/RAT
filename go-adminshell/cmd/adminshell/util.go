@@ -24,13 +24,31 @@ func parseArguments(line string) ([]string, error) {
 		}
 	}
 
-	for _, r := range line {
+	runes := []rune(line)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
 		switch {
 		case escape:
 			current.WriteRune(r)
 			escape = false
-		case r == '\\' && !inSingle:
-			escape = true
+		case r == '\\':
+			if inSingle {
+				current.WriteRune(r)
+				continue
+			}
+			if inDouble {
+				escape = true
+				continue
+			}
+			next := rune(0)
+			if i+1 < len(runes) {
+				next = runes[i+1]
+			}
+			if unicode.IsSpace(next) || next == '\\' || next == '"' || next == '\'' {
+				escape = true
+				continue
+			}
+			current.WriteRune(r)
 		case r == '"' && !inSingle:
 			inDouble = !inDouble
 		case r == '\'' && !inDouble:
