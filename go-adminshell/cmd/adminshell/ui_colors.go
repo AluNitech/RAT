@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"runtime"
 	"strings"
 
 	"golang.org/x/term"
@@ -41,13 +42,19 @@ func detectColorConfig() colorConfig {
 	if os.Getenv("NO_COLOR") != "" {
 		return cfg
 	}
-	termName := strings.ToLower(strings.TrimSpace(os.Getenv("TERM")))
-	if termName == "" || termName == "dumb" {
-		return cfg
+	isWindows := runtime.GOOS == "windows"
+	if !isWindows {
+		termName := strings.ToLower(strings.TrimSpace(os.Getenv("TERM")))
+		if termName == "" || termName == "dumb" {
+			return cfg
+		}
 	}
 	stdoutTTY := term.IsTerminal(int(os.Stdout.Fd()))
 	stderrTTY := term.IsTerminal(int(os.Stderr.Fd()))
 	if !stdoutTTY && !stderrTTY {
+		return cfg
+	}
+	if isWindows && !enableVirtualTerminalSequences() {
 		return cfg
 	}
 
