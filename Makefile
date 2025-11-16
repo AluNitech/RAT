@@ -121,17 +121,29 @@ bin:
 	mkdir -p $(BIN_LINUX) $(BIN_WINDOWS)
 
 bundle-client-linux:
+	@if [ ! -x $(FFMPEG_LINUX_BIN) ]; then \
+		./scripts/fetch_ffmpeg.sh linux; \
+	fi
 	@test -f $(FFMPEG_LINUX_BIN) || (echo "Missing FFmpeg binary: $(FFMPEG_LINUX_BIN)" && exit 1)
 	@install -m 755 $(FFMPEG_LINUX_BIN) $(BIN_LINUX)/ffmpeg
 
 bundle-adminshell-linux:
+	@if [ ! -x $(FFPLAY_LINUX_BIN) ]; then \
+		./scripts/fetch_ffmpeg.sh linux; \
+	fi
 	@test -f $(FFPLAY_LINUX_BIN) || (echo "Missing FFplay binary: $(FFPLAY_LINUX_BIN)" && exit 1)
 	@install -m 755 $(FFPLAY_LINUX_BIN) $(BIN_LINUX)/ffplay
 
 bundle-client-windows:
+	@if [ ! -f $(FFMPEG_WINDOWS_BIN) ]; then \
+		./scripts/fetch_ffmpeg.sh windows; \
+	fi
 	@test -f $(FFMPEG_WINDOWS_BIN) || (echo "Missing FFmpeg binary: $(FFMPEG_WINDOWS_BIN)" && exit 1)
 	@cp $(FFMPEG_WINDOWS_BIN) $(BIN_WINDOWS)/ffmpeg.exe
 
 bundle-adminshell-windows:
+	@if [ ! -f $(FFPLAY_WINDOWS_BIN) ]; then \
+		./scripts/fetch_ffmpeg.sh windows; \
+	fi
 	@test -f $(FFPLAY_WINDOWS_BIN) || (echo "Missing FFplay binary: $(FFPLAY_WINDOWS_BIN)" && exit 1)
 	@cp $(FFPLAY_WINDOWS_BIN) $(BIN_WINDOWS)/ffplay.exe

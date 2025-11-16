@@ -33,3 +33,4 @@
 - サーバーの公開 API は gRPC のみなので、新しい HTTP エンドポイントを足す代わりに RPC を増やす方が既存ツールチェーン（`go-adminshell`・`go-client`）との整合性を取りやすいです。
 - CI やローカル自動化で `make build-*` を呼ぶ場合は `third_party/ffmpeg` の存在を事前にチェックし、足りない場合はエラーをユーザーに伝えてください。
 - 何らかのコード／設定変更を行う際は、実作業に入る前にユーザーへ目的と主要ステップを簡潔に共有し、了承を得てから進めてください。
+- FFmpeg/FFplay バイナリは Git に含めず、`scripts/fetch_ffmpeg.sh <linux|windows>` が公式配布（Linux=BtbN, Windows=gyan.dev）から自動取得するため、Makefile で不足エラーが出たら該当スクリプトを先に実行してください。
